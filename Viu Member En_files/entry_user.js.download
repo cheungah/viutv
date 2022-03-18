@@ -1,0 +1,327 @@
+;define('entry_user', ['header', 'user'], function (require) {
+	var header = require('header');
+	var getUserInfoPromise = header.init();
+	var user = require('user');
+
+	function GetQueryString(name){
+		var reg = new RegExp("(^|&)"+ name +"=([^&]*)(&|$)");
+		var r = window.location.search.substr(1).match(reg);
+		if(r!=null)return  unescape(r[2]); return null;
+	}
+
+	var action = "";
+	if (GetQueryString("action") != null) {
+		action = GetQueryString("action");
+	}
+	
+	if (action == "ais_viu_server_error" || action == "ais_area_alert" || action == "ais_mobile_alert" || action == "ais_package_binded_alert" || action == "ais_duplicated_premium_alert" || action == "ais_charge_prepaid_error" || action == "ais_charge_postpaid_error" || action == "ais_bind_error" || action == "ais_bind_success" || action == "ais_noti_used" || action == "custom_error" || action == "true_viu_server_error" || action == "true_area_alert" || action == "true_mobile_alert" || action == "true_package_binded_alert"){
+		var mobile = "";
+		var username = "";
+		var error_msg = "";
+
+		if (action == "ais_package_binded_alert" || action == "ais_duplicated_premium_alert" || action == "ais_bind_success" || action == "true_package_binded_alert" && GetQueryString("iid") != null) {
+			var identity = GetQueryString("iid");
+
+			var data = {
+				'identity': identity,
+				'platform_flag_label': 'web'
+			};
+
+			$.ajax({
+				type: 'POST',
+				url: web_api_url+'user/login',
+				data: JSON.stringify(data),
+				success:function(response){
+					response = JSON.parse(response);
+
+					// login tracking
+					window.tracking.Tracker.globalParamters.addDimension(
+						tracking.dimension.LOGIN_METHOD,
+						"Identity"
+					);
+
+					if (response.status.code === 0) { // login successfully
+						var user_data = response.data.user;
+						Cookies.set('user_id', user_data.user_id);
+						Cookies.set('username', user_data.username);
+						Cookies.set('nickname', user_data.nickname);
+						Cookies.set('account_type', user_data.account_type);
+//remove set-operators-device
+							$.ajax({
+								url: web_api_url+'user/info'
+							}).done(function (response) {
+								var infoResponse = JSON.parse(response);
+								if (infoResponse.status.code === 0 && infoResponse.data.user.user_id != null) {
+									var user_data = infoResponse.data.user;
+
+									Cookies.set('user_level', user_data.user_level);
+									Cookies.set('has_free_trial', user_data.has_free_trial);
+													
+									if (user_data.operators){
+										if (user_data.operators.body != "null"){ // VIP member
+											$("body").addClass("vip");
+										}
+
+										window.tracking.Tracker.globalParamters.addDimension(
+											tracking.globalDimension.USER_SUBSCRIPTION_SOURCE,
+											user_data.operators.label
+										)
+									}
+								}
+							});
+//end remove set-operators-device
+					}
+				}
+			});
+		}
+		
+		if (GetQueryString("mobile") != null) {
+			mobile = $.base64.urlSafeDecode(GetQueryString("mobile"));
+		}
+
+		if (GetQueryString("username") != null) {
+			username = $.base64.urlSafeDecode(GetQueryString("username"));
+		}
+
+		if (GetQueryString("error_msg") != null) {
+			error_msg = GetQueryString("error_msg");
+		}
+
+		user.showAisAlertDialog(action, mobile, username, error_msg);
+	}
+
+	if (action == "common") {
+		var identity = "";
+		var popup_title = "";
+		var popup_msg = "";
+		
+		var queryString = window.location.search;
+		var searchParams = new URLSearchParams(queryString);
+		searchParams.forEach(function(value, key) {
+			if (key == "popupTitle") {
+				popup_title = value;
+			}else if (key == "popupMsg") {
+				popup_msg = value;
+			}
+		});
+		
+		// if (GetQueryString("identity") != null) {
+		// 	identity = GetQueryString("identity");
+		// }
+		
+		// if (identity != null || identity != "") {
+		// 	var data = {
+		// 		'identity': identity,
+		// 		'platform_flag_label': 'web'
+		// 	};
+
+		// 	$.ajax({
+		// 		type: 'POST',
+		// 		url: web_api_url+'user/login',
+		// 		data: JSON.stringify(data),
+		// 		success:function(response){
+		// 			response = JSON.parse(response);
+
+		// 			// login tracking
+		// 			window.tracking.Tracker.globalParamters.addDimension(
+		// 				tracking.dimension.LOGIN_METHOD,
+		// 				"Identity"
+		// 			);
+
+		// 			if (response.status.code === 0) { // login successfully
+		// 				var user_data = response.data.user;
+		// 				Cookies.set('user_id', user_data.user_id);
+		// 				Cookies.set('username', user_data.username);
+		// 				Cookies.set('nickname', user_data.nickname);
+		// 				Cookies.set('account_type', user_data.account_type);
+
+		// 				// set devices
+		// 				var data = {
+		// 					'device_id': navigator.appVersion
+		// 				};
+
+		// 				$.ajax({
+		// 					type: "POST",
+		// 					url: web_api_url+'user/set-operators-device',
+		// 					data: JSON.stringify(data)
+		// 				}).done(function(response) {
+		// 					// set refresh device setting
+		// 					var date = new Date();
+		// 					//use the constructor to create by milliseconds
+		// 					var updateTime = new Date(date.getTime() + device_update_time);
+		// 					Cookies.set('setdevice', parseInt(Math.floor(updateTime/1000)));
+
+		// 					return $.ajax({
+		// 						url: web_api_url+'user/info'
+		// 					}).done(function (response) {
+		// 						var infoResponse = JSON.parse(response);
+		// 						if (infoResponse.status.code === 0) {
+		// 							var user_data = infoResponse.data.user;
+
+		// 							Cookies.set('user_level', user_data.user_level);
+		// 							Cookies.set('has_free_trial', user_data.has_free_trial);
+
+		// 							if (user_data.operators){
+		// 								if (user_data.operators.body != "null"){ // VIP member
+		// 									$("body").addClass("vip");
+		// 								}
+
+		// 								window.tracking.Tracker.globalParamters.addDimension(
+		// 									tracking.globalDimension.USER_SUBSCRIPTION_SOURCE,
+		// 									user_data.operators.label
+		// 								)
+		// 							}
+		// 						}
+		// 					});
+		// 				});
+		// 			}
+		// 		}
+		// 	});
+		// }
+
+		user.showAlertDialog(popup_title, popup_msg);
+	}
+	
+	getUserInfoPromise.done(function (response) {
+		response = JSON.parse(response);
+		if (response.status.code === 0 && response.data.user.user_id != null) {	// logined
+
+			// click on user profile image, can edit user details
+			$(document).on('click', '.user-logged-on>img', function(){	// 点击头像，编辑用户信息
+				$('.user-logged-on .user-menu').stop().slideToggle(300);
+				//$('.user-logged-on > span, .v-user img').toggleClass("hover");
+				//user.showEditProfileDialog();
+			});
+            
+            $('.menu-update-profile').on('click', function (e) {
+				user.showEditProfileDialog();
+			});
+
+			$('#cancel_card_subscription_btn').on('click', function (e) {
+				user.showCancelCardSubcriptionDialog();
+			});
+
+			$('#cancel_ais_subscription_btn').on('click', function (e) {
+				user.showCancelAisSubcriptionDialog();
+			});
+			
+			$('#cancel_pldt_subscription_btn').on('click', function (e) {
+				user.showCancelPldtSubcriptionDialog();
+			});
+
+			$('.user-logged-on i').on('click', function (e) {
+				window.location.href="index.php?r=member%2Findex&tab=favorite";
+			});
+
+			// if click from link
+			if (GetQueryString("verified") == 1){
+				user.showRegisterSuccessDialog();
+			}
+
+			if(window.location.href.indexOf("/premium") !== -1){
+				complete_register_function = function(){user.showCompleteRegister()};
+				if(window.user.account_type == "6" && GetQueryString("action") != "tv_free_trial"){
+					complete_register_function();
+				}
+			}
+
+			// user dropdown menu when hover on 
+			if (!md.mobile()) {
+                
+                $(document).on('mouseenter', '.user-logged-on', function(){
+                    $(this).find('.user-menu').stop().slideDown(300);
+                }).on('mouseleave', '.user-logged-on', function(){
+                    $(this).find('.user-menu').stop().slideUp(300);
+                });
+                
+                /*$('.user-logged-on').on('mouseenter', function (e) {
+                    $(this).find('.user-menu').stop().slideDown(300);
+                }).on('mouseleave', function (e) {
+                    $(this).find('.user-menu').stop().slideUp(300);
+                });*/
+            }
+		} else {
+            $(document).on('click', '.user-logged-on>img', function(){	// 点击头像，编辑用户信息
+				$('.user-logged-on .user-menu').stop().slideToggle(300);
+			});
+            
+			// user dropdown menu when hover on 
+            if (!md.mobile()) {
+                $('.user-guest').on('mouseenter', function (e) {
+                    $(this).find('.user-guest-menu').stop().slideDown(300);
+                }).on('mouseleave', function (e) {
+                    $(this).find('.user-guest-menu').stop().slideUp(300);
+                });
+                
+                $(document).on('mouseenter', '.user-logged-on', function(){
+                    $('.user-menu').stop().slideDown(300);
+                }).on('mouseleave', '.user-logged-on', function(){
+                    $('.user-menu').stop().slideUp(300);
+                });
+            }
+			$('#guest-login-btn-trigger').on('click', function (e) {
+				$('.user-guest-menu').stop().slideToggle(300);
+				//user.showLoginAndRegisterDialog();
+				// user.showLogin();
+			});
+			$('.user-guest-menu .login, #eb-tab-redeem').on('click', function (e) {
+				user.showLoginAndRegisterDialog();
+				// user.showLogin();
+			});
+            if (regPage) {
+                user.showLoginAndRegisterDialog();
+            }
+
+            if(window.location.href.indexOf("/premium") !== -1 || window.location.href.indexOf("premium/index2") !== -1){
+				if (GetQueryString("action") != "tv_free_trial" ){
+					user.showLoginAndRegisterDialog();
+				}
+			}
+
+			if (GetQueryString("login_return_url") != null ){
+				user.showLoginAndRegisterDialog();
+			}
+		}
+
+		if(window.location.href.indexOf("/premium") !== -1){
+			// vuclip testing
+			// if (!GetQueryString("vuclip") && vuclip_regions.indexOf(parseInt(global_area_id)) == -1){
+			// 	afterGetUserData();
+			// }
+
+			if (GetQueryString("action") == "tvupgrade" ){
+				tvupgrade();
+			}
+
+			if (GetQueryString("action") == "tv_free_trial" ){
+				tryLoginWithTvUser();
+			}
+		}
+	}).fail(function (err) {
+		$('#guest-login-btn').on('click', function (e) {
+			user.showLoginAndRegisterDialog();
+			// user.showLogin();
+		});
+	}).always(function() {
+
+		var USER_TYPE = "Anonymous";
+		
+		if (window.user && window.user.user_id) {
+			if (window.isVip) {
+				if(window.user.user_level == 3){
+					USER_TYPE = "Premium Plus";
+				}else{
+					USER_TYPE = "Premium";
+				}
+			} else {
+				USER_TYPE = "Free";
+			}
+		}
+
+		ga('viuWebTracker.set', 'dimension4', USER_TYPE);
+	})
+});
+
+function seaModEntryUser(){
+	seajs.use("entry_user");
+}

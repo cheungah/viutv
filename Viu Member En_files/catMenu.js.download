@@ -1,0 +1,31 @@
+// Category button on nav bar for mobile version
+
+function toggleCatMenu() {
+	$('.v-nav').stop().slideToggle();
+	$('#v-nav-button').toggleClass("active");
+}
+
+$(function() {
+	$('#v-nav-button').click(function(){toggleCatMenu();});
+	$('.v-nav #catCloseBtn').click(function(){toggleCatMenu();});
+    /*new menu*/
+    
+    $( ".v-nav" ).on({
+        mouseover: function () {
+            $( ".nav-wrap" ).addClass("expand");
+        },
+        mouseleave: function () {
+            $( ".nav-wrap" ).removeClass("expand");
+        }
+    });
+    
+    /*new menu*/
+    var catsWidth = 0;
+    for (i = 0; i < $(".v-topnav .v-nav li:visible").length; i++) { 
+        catsWidth += $(".v-topnav .v-nav li:eq("+i+")").outerWidth();
+    }
+    if (catsWidth < $(".v-topnav .v-nav").width()) {
+        $("#navMore").hide();
+        $( ".v-nav" ).off('mouseover mouseleave');
+    }
+});

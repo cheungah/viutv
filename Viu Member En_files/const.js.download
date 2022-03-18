@@ -1,0 +1,8 @@
+(function(){
+    var const_ = {}
+    const_.SCREEN_ORIENTATION_LANDSCAPE =  "landscape"
+    const_.SCREEN_ORIENTATION_PORTRAIT ="portrait"
+    const_.CATEGORY_UNKNOWN_TITLE = "Banner"
+    const_.GRID_UNKNOWN_POSITION = "-1"
+    window.tracking.const = const_
+}).call(this)

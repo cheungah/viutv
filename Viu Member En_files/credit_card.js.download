@@ -1,0 +1,292 @@
+var encrypted_data = "";
+var subscription_id = "";
+var recurring_key_id = "";
+
+$(function() {
+    var json_string = JSON.stringify({
+        platform: "web",
+        platform_flag_label: "web",
+        area_id: global_area_id,
+        language_flag_id: global_lang_id,
+        network_type: "",
+        build_number: "",
+        source: "", // AUTO or MANUAL
+        device_id: Cookies.get("_ottUID"),
+        device_model: "",
+        device_os_version: "",
+        app_session_id: "",
+        activity_session_id: "",
+        screen_session_id: "",
+        device_type: "",
+        user_id: Cookies.get("user_id"),
+        user_identity: Cookies.get("identity"),
+        user_name: Cookies.get("username"),
+        product: "subscription",
+        rawurlencode_flag: false,
+        campaign_name: "payment_template"
+    });
+
+    // encrypt data for payment center
+    $.ajax({
+        type: 'POST',
+        url: "/ott/misc/webview/payment/data_encrypt.php",
+        data: {data: json_string},
+        success:function(response_data){
+            encrypted_data = response_data;
+
+            $.ajax({
+                "type": "POST",
+                "crossDomain": true,
+                "url": subscription_api_url+"subscription/details",
+                "headers": {
+                    "X-USER-ENCRYPTED-DATA": encrypted_data
+                }
+            }).done(function(subscription_detail) {
+                if (subscription_detail.status) {
+                    subscription_id = subscription_detail.data.subscription_id;
+                    recurring_key_id = subscription_detail.data.recurring_key_id;
+
+                    //used to solve the api delay issue
+                    var interval = setInterval(function() { 
+                        if ($('#credit_card_number').length > 0) {
+                            if (subscription_detail.data.billing_email != undefined)
+                            {
+                                $('#billing_email').html(LANG_text["billing_email"] + ': <span style="color:#FFF; margin-left:8px;">' + subscription_detail.data.billing_email + '</span>');
+
+                                $('#change_billing_email_btn').show();
+                            }
+
+                            if (subscription_detail.data.is_recurring_subscription != undefined && subscription_detail.data.is_recurring_subscription == 1) {
+                                if (subscription_detail.data.next_recurring_date != undefined)
+                                {
+                                    var next_recurring_date_seg = subscription_detail.data.next_recurring_date.split(" ");
+                                    var next_billing_date_seg = next_recurring_date_seg[0].split("-");
+                                    var next_billing_date = next_billing_date_seg[2] + " / " + next_billing_date_seg[1] + " / " + next_billing_date_seg[0];
+    
+                                    $('#next_billing_date').html(next_billing_date + ' <span class="ddmmyyyy">(DD / MM / YYYY)</span>');
+                                    (subscription_detail.data.subscription_can_cancel) ? $('#next_billing_date_tr').show() : "";
+
+                                    $('#card_premium_till').html(next_billing_date + ' <span class="ddmmyyyy">(DD / MM / YYYY)</span>');
+
+                                    if(subscription_detail.data.is_recurring_canceled){
+                                        $('#status_label').html(LANG_text["status_cancelled"]).show();
+                                    }
+                                }
+
+                                if (subscription_detail.data.subscription_can_restart)
+                                {
+                                    $('#card_premium_till_tr').show();
+
+                                    var premium_till_date = new Date(subscription_detail.data.next_recurring_date);
+                                    var diff_day = diffDays(premium_till_date);
+                                    if(diff_day<7){
+                                        $('#status_label').html(LANG_text["status_expire_soon"]).show();
+                                    }
+                                }
+                            }else {
+                                if (subscription_detail.data.subscription_end_date != undefined)
+                                {
+                                    var subscription_end_date_seg = subscription_detail.data.subscription_end_date.split(" ");
+                                    var subscription_end_date_seg = subscription_end_date_seg[0].split("-");
+                                    var subscription_end_date = subscription_end_date_seg[2] + " / " + subscription_end_date_seg[1] + " / " + subscription_end_date_seg[0];
+
+                                    $('#card_premium_till').html(subscription_end_date + ' <span class="ddmmyyyy">(DD / MM / YYYY)</span>');
+
+                                    $('#card_premium_till_tr').show();
+                                }
+                            }
+                            
+                            if (subscription_detail.data.card.last_4digits != undefined)
+                            {
+                                $('#credit_card_number').html('***********' + subscription_detail.data.card.last_4digits);
+                                $('#credit_card_number_tr').show();
+                            }
+
+                            if (subscription_detail.data.card.expiry_year != undefined && subscription_detail.data.card.expiry_month != undefined)
+                            {
+                                $('#expiry_date').html(subscription_detail.data.card.expiry_month + ' / ' +subscription_detail.data.card.expiry_year + ' <span class="ddmmyyyy">(MM / YYYY)</span>');
+                                $('#expiry_date_tr').show();
+                            }
+
+                            if (subscription_detail.data.shipment != undefined) {
+                                if (subscription_detail.data.shipment.item_description != undefined) {
+                                    $('#description').html(subscription_detail.data.shipment.item_description);
+                                    $('#description_tr').show();
+                                }
+
+                                if (subscription_detail.data.shipment.po_number != undefined) {
+                                    var pending_text = "";
+                                    if (subscription_detail.data.shipment.shipment_status == "Pending") {
+                                        pending_text = "<span class='pending'>" + LANG_text["pending"] + "</span>";
+                                    }
+
+                                    $('#order_id').html(subscription_detail.data.shipment.po_number + pending_text);
+                                    $('#order_id_tr').show();
+                                }
+
+                                if (subscription_detail.data.shipment.serial_number != undefined) {
+                                    $('#serial_number').html(subscription_detail.data.shipment.serial_number);
+                                    $('#serial_number_tr').show();
+                                }
+
+                                if (subscription_detail.data.shipment.shipment_tracking_number != undefined) {
+                                    shipment_tracking_number = "<div class='tacking_number'>" + subscription_detail.data.shipment.shipment_tracking_number + "</div>";
+
+                                    track_order_link = "<div class='track_order'><a href='" + subscription_detail.data.shipment.shipment_tracking_url + "' target='_blank'>" + LANG_text["track_order"] + "</a></div>";
+
+                                    $('#shipment_tracking_number').html(shipment_tracking_number + track_order_link);
+                                    $('#shipment_tracking_number_tr').show();
+                                }
+                            }
+
+                            clearInterval(interval);
+                        }
+                    }, 1000);
+
+                    (subscription_detail.data.subscription_can_cancel) ? $('#cancel_card_subscription_btn').show() : "";
+                    (subscription_detail.data.update_card_info) ? $('#change_card_info_btn').show() : "";
+                    (subscription_detail.data.subscription_can_restart) ? $('#restart_box').show() : "";
+                    (subscription_detail.data.subscription_can_restart) ? $('#restart_card_subscription_btn').show() : "";
+                }
+            });
+        }
+    });
+
+    $("#change_card_info_btn").click(function () {
+        if (subscription_id != "" && recurring_key_id != "") {
+            var json_string_with_detail = JSON.stringify({
+                platform: "web",
+                platform_flag_label: "web",
+                area_id: global_area_id,
+                language_flag_id: global_lang_id,
+                network_type: "",
+                build_number: "",
+                source: "", // AUTO or MANUAL
+                device_id: Cookies.get("_ottUID"),
+                device_model: "",
+                device_os_version: "",
+                app_session_id: "",
+                activity_session_id: "",
+                screen_session_id: "",
+                device_type: "",
+                user_id: Cookies.get("user_id"),
+                user_identity: Cookies.get("identity"),
+                user_name: Cookies.get("username"),
+                product: "subscription",
+                campaign_name: "payment_template",
+                subscription_id: subscription_id,
+                recurring_key_id: recurring_key_id
+            });
+
+            $.ajax({
+                type: 'POST',
+                url: "/ott/misc/webview/payment/data_encrypt.php",
+                data: {data: json_string_with_detail},
+                success:function(response_data){
+                    window.location.href = payment_form_url + "ui/update.php?data="+response_data;
+                }
+            });
+        }
+    });
+
+    $("#restart_card_subscription_btn").click(function () {
+        $.ajax({
+            "type": "POST",
+            "crossDomain": true,
+            "url": subscription_api_url+"subscription/details",
+            "headers": {
+                "X-USER-ENCRYPTED-DATA": encrypted_data
+            }
+        }).done(function(subscription_detail) {
+            if (subscription_detail.status && subscription_detail.data.subscription_can_restart) {
+                $.ajax({
+                    "type": "POST",
+                    "crossDomain": true,
+                    "url": subscription_api_url+"subscription/restart",
+                    "headers": {
+                        "X-USER-ENCRYPTED-DATA": encrypted_data
+                    },
+                    "data": "{\"subscription_id\": "+subscription_detail.data.subscription_id+"}"
+                }).done(function(restart_detail) {
+                    if (restart_detail.status) {
+                        var popup_redirect_url = "/ott/" + global_area_code + "/" + global_url_code + "/member";
+                        var next_recurring_date_seg = subscription_detail.data.next_recurring_date.split(" ");
+                        var next_billing_date_seg = next_recurring_date_seg[0].split("-");
+                        var next_billing_date = next_billing_date_seg[2] + " / " + next_billing_date_seg[1] + " / " + next_billing_date_seg[0];
+						var description = LANG_text["cc_resume_popup_desc"].replace("{DD/MM/YYYY}", next_billing_date);
+
+						g_popup("", LANG_text["cc_resume_popup_title"], description, popup_redirect_url, false, false, LANG_text["cc_resume_popup_btn"]);
+
+                        tracking.facade.event_push(
+                            window.tracking.screen.MEMBER_CENTER,
+                            "Unsubscribe",
+                            "Resume Subscription",
+                            "Credit Card",
+                            "Viu Premium"
+                        );
+                    
+                        dataLayer.push({
+                            'event': 'GA_EVENT',
+                            'event_screen': window.tracking.screen.MEMBER_CENTER,
+                            'event_category': 'Unsubscribe',
+                            'event_action': 'Resume Subscription',
+                            'event_label': 'Credit Card'
+                        });
+
+                        tracking.facade.screen_push(
+                            "Premiums - Resume Subscription",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "Subscription Resumption Confirmation"
+                        );
+                    
+                        dataLayer.push({
+                            'event': 'GA_SCREENVIEW',
+                            'event_screen': 'Premiums - Resume Subscription',
+                            'screen_metadata': 'Subscription Resumption Confirmation'
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    $("#change_billing_email_btn").click(function () {
+        if (subscription_id != "") {
+            var json_string_for_billing_email = JSON.stringify({
+                platform: "web",
+                platform_flag_label: "web",
+                area_id: global_area_id,
+                language_flag_id: global_lang_id,
+                network_type: "",
+                build_number: "",
+                source: "", // AUTO or MANUAL
+                device_id: Cookies.get("_ottUID"),
+                device_model: "",
+                device_os_version: "",
+                app_session_id: "",
+                activity_session_id: "",
+                screen_session_id: "",
+                device_type: "",
+                user_id: Cookies.get("user_id"),
+                user_identity: Cookies.get("identity"),
+                user_name: Cookies.get("username"),
+                product: "subscription",
+                campaign_name: "payment_template",
+                subscription_id: subscription_id
+            });
+
+            $.ajax({
+                type: 'POST',
+                url: "/ott/misc/webview/payment/data_encrypt.php",
+                data: {data: json_string_for_billing_email},
+                success:function(response_data){
+                    window.location.href = payment_form_url + "ui/update-billing-email.php?data="+response_data;
+                }
+            });
+        }
+    });
+});

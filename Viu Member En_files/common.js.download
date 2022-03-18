@@ -1,0 +1,138 @@
+$(function(){
+	//Êó±êÒÆÈëµÄ¾ç¼¯¼ò½é
+	var parent = $('.figure').parent(),
+		playInfo = null,
+		playShadow = null,
+		playIco = null;
+		
+	parent.on({
+		mouseenter: function(){
+			var hook = $(this).closest('.play-intro-hook'),
+				hookWidth = hook.width(),
+				width = $(this).outerWidth(true),
+				height = $(this).outerHeight(),
+				distLeft = $(this).position().left,
+				distTop = $(this).position().top + height / 5 - 12;
+				
+			playInfo = hook.find('.play-intro');
+			playShadow = $(this).find('.play-shadow');
+			playIco = $(this).find('.play-ico');
+			if(hook.hasClass('play-intro-hook')){
+				if(hookWidth === 888){
+					width = $(this).outerWidth();
+					distTop = $(this).position().top;
+				}
+				if(width + distLeft + 10 >= hookWidth){
+					playInfo.find('.play-aw').addClass('play-aw-r').end().css({left: 'auto', right: width - 30, top: distTop}).show();
+				}else{
+					playInfo.find('.play-aw').removeClass('play-aw-r').end().css({right:'auto', left: width + distLeft, top: distTop}).show()
+				}
+
+				playInfo.on({
+					mouseenter: function(){
+						playInfo.show();
+						playShadow.show();
+						playIco.show();
+					},
+					mouseleave: function(){
+						playInfo.hide();
+						playShadow.hide();
+						playIco.hide();
+					}
+				});
+			}
+			playShadow.show();
+			playIco.show();
+		},
+		mouseleave: function(){
+			playInfo.hide();
+			playShadow.hide();
+			playIco.hide();
+		}
+	
+	});
+	//Ñ¡Ïî¿¨Ð§¹û
+	/*	Ê¾Àý
+		$('.tab-box').tab({
+			tab: '.common-tab',
+			panel: '.common-panel',
+			type: 'click'
+		});
+	*/
+	$.fn.extend({
+		tab: function(opts){
+			var defaultOption = {
+				tab: '.common-tab',
+				panel: '.common-panel',
+				triggerClass: 'current',
+				type: 'click'
+			}, option;
+			
+			option = $.extend(defaultOption, opts);
+			
+			return this.each(function(i, o){
+				
+				var tabs = $(o).find(option.tab),
+					panels = $(o).find(option.panel);
+				
+				tabs.on(option.type, function(){
+					
+					var index = $(this).index();
+					$(this).addClass(option.triggerClass).siblings().removeClass(option.triggerClass);
+					panels.eq(index).show().siblings().hide();
+				});
+				
+			});
+		}
+	
+	});
+	//¾ç¼¯Ä¿Â¼ÇÐ»»
+	$('.v-player-list').tab({
+		tab: '.common-tab > li',
+		panel: '.common-panel'
+	});
+	//²ÂÄãÏ²»¶ÇÐ»»
+	// $('.video-cmd-tbox').tab({
+	// 	tab: '.video-cmd-tab > li',
+	// 	panel: '.video-cmd-item'
+	// });
+	//ä¯ÀÀ¼ÇÂ¼ÇÐ»»
+	/*$('.memeber-rd').tab({
+		tab: '.memeber-rd-tab > li',
+		panel: '.memeber-rd-panel'
+	});*/
+	
+	//µÇÂ¼ÏÂÀ­²Ëµ¥
+	var dropMenu = {
+		timer: null,
+		showMenu: function(){
+			clearTimeout(this.timer);
+			$('.user-menu').show();
+			$('.user-login').addClass('v-user-on');
+		},
+		hideMenu: function(){
+			clearTimeout(this.timer);
+			this.timer = setTimeout(function(){
+				$('.user-menu').hide();
+				$('.user-login').removeClass('v-user-on');
+			}, 200);
+		}
+	};
+	$('.user-login').bind({
+		mouseenter: function(){
+			dropMenu.showMenu();
+		},
+		mouseleave: function(){
+			dropMenu.hideMenu();
+		}
+	});
+	$('.user-menu').bind({
+		mouseenter: function(){
+			dropMenu.showMenu();
+		},
+		mouseleave: function(){
+			dropMenu.hideMenu();
+		}
+	});
+	
+})

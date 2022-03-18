@@ -1,0 +1,36 @@
+$(function() {
+    $("#restart_ais_subscription_btn").click(function () {
+        $.ajax({
+            "async": true,
+            "crossDomain": true,
+            "url": ais_api_router+"subscription/get",
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json",
+                "Authorization": "Basic "+ais_basic_auth
+            },
+            "processData": false,
+            "data": JSON.stringify({"provider":"ais", "partner_user_id":ais_mobile})
+        }).done(function(subscription_detail) {
+            if (subscription_detail.code == "20000" && subscription_detail.data.subscription_can_restart) {
+                $.ajax({
+                    "async": true,
+                    "crossDomain": true,
+                    "url": ais_api_router+"subscription/restart",
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic "+ais_basic_auth
+                    },
+                    "processData": false,
+                    "data": JSON.stringify({"provider":"ais", "partner_user_id":ais_mobile, "platform":"web", "platform_flag_label":"web"})
+                }).done(function(restart_detail) {
+                    if (restart_detail.code == "20000") {
+                        console.log("Restarted");
+                        window.location.reload();
+                    }
+                });
+            }
+        });
+    });
+});

@@ -1,0 +1,88 @@
+var user_type;
+var ott_user_type;
+
+// staging
+var website_domain = "/ott/"+global_area_code+"/";
+var site_url = "/ott/"+global_area_code+"/index.php?r=";
+var web_api_base_params = "area_id="+global_area_id+"&language_flag_id="+global_lang_id+"&cpreference_id="+global_cpreference_id;
+var web_api_url = "/ott/"+global_area_code+"/index.php?"+web_api_base_params+"&r="; // for web api
+var api_url = "/ott/"+global_area_code+"/index.php?r=";
+var api_app_url = region.api_app_url;
+var subscription_api_url = region.subscription_api_url;
+var ais_api_router = region.ais_api_router;
+var ais_basic_auth = region.ais_basic_auth;
+var pldt_api_router = region.pldt_api_router;
+var pldt_basic_auth = region.pldt_basic_auth;
+var payment_form_url = region.payment_form_url;
+var getbillinghistory_api_url = region.getbillinghistory_api_url;
+var apple_id_client_id = region.apple_id_client_id;
+var apple_id_redirect_uri = region.apple_id_redirect_uri;
+
+var graphql_guest_url = region.graphql_guest_url;
+var graphql_frontend_url = region.graphql_frontend_url;
+
+var mobile_api_domain = region.mobile_api_domain;
+
+var api_post_url ="/ott/"+global_area_code+"/index.php?r=vod/jsonp&"+web_api_base_params;
+
+var video_url = region.universal_api_endpoint+"playback/distribute?cpreference_id="+global_cpreference_id+"&ccs_product_id=";
+
+// cross domain solver, place at the begining
+var api_cross_domain = "/ott/"+global_area_code+"/index.php?r=vod/jsonp&"+web_api_base_params+"&url=";
+
+var track_api_url = region.track_api_url;
+
+var web_api_tail = "&platform_flag_label=web&area_id="+global_area_id+"&language_flag_id="+global_lang_id+"&cpreference_id="+global_cpreference_id;
+
+// default profile picture
+var default_profile_img = "/ott/"+global_area_code+"/v1/images/header/menu_profilePic_guest.svg";
+
+// link
+var link_live = "index.php?r=live/index"; // live page
+
+// default_keyword
+var default_keyword_head = "";
+var default_keyword = "";
+
+// app link
+var app_ios_iphone = region.appIOSLink;
+var app_ios_ipad = region.appIOSLink;
+
+var app_android_mobile = region.appAndroidLink;
+var app_android_tablet = region.appAndroidPadLink;
+
+// vod
+var no_subtitles = "";
+var video_duration = 180;
+
+// device update
+var device_update_time = 60 * 1000; // 24 * 60 * 60 * 1000
+
+// Singtel Login
+var st_login_base = region.st_login_base;
+var st_login_return = "https://"+region.domain+"/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/singtel-login";
+var st_login_url = st_login_base+"?return_url="+st_login_return;
+
+// To-be-expired alert timeout
+var tbe_timeout = 14400;
+
+// redemption
+var time_to_timeout = 900000; // 15 minutes 900000
+
+// vod free time limit
+var free_time_limit = 72; // (hours)
+
+var ad_tag_id = region.ad_tag_id;
+var ad_tag_id_free_preroll = region.ad_tag_id_free_preroll;
+var ad_tag_id_free_midroll = region.ad_tag_id_free_midroll;
+var ad_tag_id_paid_preroll = region.ad_tag_id_paid_preroll;
+var ad_tag_id_app_to_web = region.ad_tag_id_app_to_web;
+var ads_tag_key = region.ads_tag_key;
+
+// tracking
+// PARTNER_TRIGGER_POINT
+var trigger_point_config = region.trigger_point_config;
+
+var entry_point_config = region.entry_point_config;
+
+var trigger_action_config = region.trigger_action_config;
