@@ -1,0 +1,1794 @@
+//var user_id = GetQueryString('user_id'); //用户ID
+//var tab = GetQueryString('tab');
+var generalPages = ["index","favorite", "record","devices"];
+// var planName = {
+// 				"redemption":"兌換碼",
+// 				"free_premium":"免費升級會員",
+// 				"AEP":"Asia Entertainment Package",
+// 				"Mentholatum":"Mentholatum",
+// 				"ios_iap":"iOS IAP",
+// 				"android_iap":"Android IAP",
+// 				"csl":"CSL / 1O1O",
+// 				"sun_mobile":"SUN Mobile",
+// 				"singtel":"Singtel",
+// 				"club_sim":"Club SIM"
+// 				};
+var tab_index = generalPages.indexOf(tab);
+var monthNames = [
+  "1", "2", "3",
+  "4", "5", "6", "7",
+  "8", "9", "10",
+  "11", "12"
+];
+
+var user_id;
+if(user_id==null || user_id=='') user_id = 1;
+if(tab_index==-1) tab_index = 0;
+
+var tabId = 0;
+var page = [0,0];
+var pagesize = 6; //每次加载个数
+var offset = [1,1];
+var series_total = [0,0];
+var loading = [false,false];
+var follow_has_data = false;
+var follow_reach_end = false;
+var history_has_data = false;
+var history_reach_end = false;
+var currentTime = Math.floor(Date.now()/1000);
+
+// detect browser
+
+// Opera 8.0+
+var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
+    // Firefox 1.0+
+var isFirefox = typeof InstallTrigger !== 'undefined';
+    // At least Safari 3+: "[object HTMLElementConstructor]"
+var isSafari = Object.prototype.toString.call(window.HTMLElement).indexOf('Constructor') > 0;
+    // Internet Explorer 6-11
+var isIE = /*@cc_on!@*/false || !!document.documentMode;
+    // Edge 20+
+var isEdge = !isIE && !!window.StyleMedia;
+    // Chrome 1+
+var isChrome = !!window.chrome && !!window.chrome.webstore;
+    // Blink engine detection
+var isBlink = (isChrome || isOpera) && !!window.CSS;
+
+var histResponse;
+
+$(function() {
+	// -- GA Screen tracking start --
+	gaScreenTracker(window.tracking.screen.MEMBER_CENTER);
+	// -- GA Screen tracking end --
+
+	// --- Tracking code start ---
+	tracking.facade.screen_memberCenter();
+	// --- Tracking code end ---
+	//$(window).resize(resizePage);
+
+	topmenuanimate();
+
+	$(window).scroll(function () {
+		topmenuanimate();
+	});
+
+
+    getCurrentDeviceData();
+
+	//alert(getBrowser());
+
+	//init();
+});
+
+$('.hoverQuestion').hover(
+  function(){ $(this).find(".hoverAnswer").stop().fadeIn(400); },
+  function(){ $(this).find(".hoverAnswer").stop().fadeOut(400); }
+);
+
+// Convert timestamp to DD / MM / YYYY format
+function ddmmyyyy(stamp) {
+    var d = new Date(stamp * 1000);
+    return ('0'+d.getDate()).slice(-2) + " / " + ('0'+(d.getMonth()+1)).slice(-2) + " / " + d.getFullYear();
+}
+
+// Convert redemption code to xxxx xxxx xxxx xxxx format
+function codeFormat(str, n) {
+    var ret = [];
+    var i;
+    var len;
+    for(i = 0, len = str.length; i < len; i += n) {
+       ret.push(str.substr(i, n))
+    }
+    return ret.join(' ');
+};
+
+function preiodToTc(period) {
+    switch (period) {
+        case "Day":
+            return LANG_text["day"];
+            break;
+        case "Week":
+            return LANG_text["week"];
+            break;
+        case "Month":
+            return LANG_text["month"];
+            break;
+    }
+}
+
+function getBrowser(){
+// Return cached result if avalible, else get result then cache it.
+    if (browser.prototype._cachedResult)
+        return browser.prototype._cachedResult;
+
+    // Opera 8.0+ (UA detection to detect Blink/v8-powered Opera)
+    var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
+
+    // Firefox 1.0+
+    var isFirefox = typeof InstallTrigger !== 'undefined';
+
+    // At least Safari 3+: "[object HTMLElementConstructor]"
+    var isSafari = Object.prototype.toString.call(window.HTMLElement).indexOf('Constructor') > 0;
+
+    // Chrome 1+
+    var isChrome = !!window.chrome && !isOpera;
+
+    // At least IE6
+    var isIE = /*@cc_on!@*/false || !!document.documentMode;
+
+    // Edge 20+
+    var isEdge = !isIE && !!window.StyleMedia;
+
+    return browser.prototype._cachedResult =
+        isOpera ? 'Opera' :
+        isFirefox ? 'Firefox' :
+        isSafari ? 'Safari' :
+        isChrome ? 'Chrome' :
+        isIE ? 'IE' :
+        isEdge ? 'Edge' :
+        "Don't know";
+}
+
+function resizePage() {
+	if (window.matchMedia('(max-width: 1280px)').matches) {
+		page_type = 'S';
+	}else{
+		page_type = 'W';
+	}
+	rebuildList();
+}
+
+function rebuildList(){
+	reassign("favorite");
+	reassign("history");
+}
+
+function reassign(type){
+	midNum = 6+(page_type=='W'?0:-1);
+	var list = [];
+	var row = "";
+	var row_iter = 0;
+
+	$('#'+type+'-list-wrap li').each(function(){list.push(this);});
+
+	for(var i=0; i<list.length; i++){
+		if (row_iter==0 || row_iter%midNum == 0){
+			row += '<div class="float-hidden">';
+		}
+		row += $(list[i]).prop('outerHTML');
+		row_iter++;
+
+		if (row_iter >= midNum){
+			row_iter = 0;
+			row += '</div>';
+		}
+	}
+	if (row_iter < midNum){
+		row += '</div>';
+	}
+	$('#'+type+'-list-wrap ul').html(row);
+}
+
+
+function topmenuanimate(){
+	if ($(window).scrollTop() > 0) {
+		$('.v-topnav').addClass('fixed');
+	} else {
+		$('.v-topnav').removeClass('fixed');
+	}
+}
+
+function init(){
+	if (Cookies.get("user_id")){
+		user_id = Cookies.get('user_id');
+	}else{
+		window.location.href= "/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/";
+	}
+
+    if(Cookies.get("user_type") == 3){
+        $(".profile-table-title .p_plus_title").show();
+    }else{
+        $(".profile-table-title .p_title").show();
+    }
+
+    // if (!isVip){
+    //     $("#devices-info-table").empty().append("<tr><td>"+LANG_text["device_member_only"]+"</td></tr>");
+    // }
+
+    loadUserData();
+	//页面宽度自适应
+	//$(window).resize(resizePage);
+	resizePage();
+
+	//下拉加载更多
+/*	$(window).scroll(function () {
+		//loadDataScolling();
+	});
+
+	$(document).bind('mousewheel', function(event, delta){
+		//loadDataScolling();
+	});*/
+	$(".memeber-rd-tab li").removeClass("current");
+	$(".memeber-rd-panel").hide();
+	if(tab == "devices"){
+		// History
+
+		// -- GA Screen tracking start --
+		//gaScreenTracker("Devices");
+		// -- GA Screen tracking end --
+
+		// --- Tracking code start ---
+		//tracking.facade.screen_devices();
+		// --- Tracking code end ---
+
+		$('.memeber-rd-tab li:last-child').addClass("current");
+		$("#devices-list-wrap").show();
+	} else if (tab == "record"){
+		// History
+
+		// -- GA Screen tracking start --
+		gaScreenTracker("History");
+		// -- GA Screen tracking end --
+
+		// --- Tracking code start ---
+		tracking.facade.screen_history();
+		// --- Tracking code end ---
+
+		$('.memeber-rd-tab li:nth-child(3)').addClass("current");
+		$("#history-list-wrap").show();
+	} else if (tab == "favorite"){
+		// Bookmark
+
+		// -- GA Screen tracking start --
+		gaScreenTracker("Bookmark");
+		// -- GA Screen tracking end --
+
+		// --- Tracking code start ---
+		tracking.facade.screen_bookmark();
+		// --- Tracking code end ---
+
+		$('.memeber-rd-tab li:nth-child(2)').addClass("current");
+		$("#favorite-list-wrap").show();
+	} else {
+		$('.memeber-rd-tab li:first-child').addClass("current");
+		$("#all-list-wrap").show();
+	}
+
+	$('.memeber-rd-tab li').bind('click', function(e){
+		$(".body").attr("style", "");
+		positionFooter();
+		//setTimeout(positionFooter,500);
+	});
+
+	$("#edit-profile").bind('click', function(e){
+		$('.menu-update-profile').click();
+	});
+}
+
+function loadDataScolling(){
+	if($(document).scrollTop() + $(window).height() >= $(document).height()){
+		loadData();
+	}
+}
+
+function parseDate(input) {
+    var parts = input.match(/(\d+)/g);
+    var hours = Number(parts[3] ? parts[3] : 0);
+    var minutes = Number(parts[4] ? parts[4] : 0);
+    var seconds = Number(parts[5] ? parts[5] : 0);
+    return new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, seconds);
+}
+
+function loadData(){
+	//tabId = $('.memeber-rd-tab li:first-child').hasClass('current')?0:1;
+	if(tab_index==1){
+		loadDataFavorite();
+	}else if(tab_index==2){
+		loadDataHistory();
+	}else if(tab_index==3){
+		// Devices action
+        positionFooter();
+	}else{
+        //if (Cookies.get("operators")){
+            loadPremiumInfo();
+        //}
+		//loadDataFavorite("all");
+		//loadDataHistory("all");
+	}
+}
+
+// parental lock
+var deviceContentBody = '<tr id="%DEVICEROW%">\
+                                <td>%DEVICENAME%</td>\
+                                <td>%DEVICEDATE%</td>\
+                                <td align="right"><a onclick="javascript:removeDevice(\`%DEVICEOPERATORID%\`,\'%DEVICENAMESHORT%\')"><img src="/ott/'+global_area_code+'/v1/images/member/device_trash.svg" class="device-trash"></a></td>\
+                            </tr>';
+var restrictContentEnabledBody = LANG_text['my_device_parental']+': <font color="#FFF">'+LANG_text['my_device_parental_enabled']+' </font><br><a onclick="javascript:g_popup(\'disable_parental_pin\', LANG_text[\'popup_disable_parental_pin_title\'], LANG_text[\'popup_disable_parental_pin_body\'], false, false, \'\', LANG_text[\'popup_disable_parental_pin_confirm_btn\']);">'+LANG_text['my_device_parental_disable_button']+'</a><a onclick="javascript:g_popup(\'change_parental_current_pin\', LANG_text[\'popup_change_parental_current_pin_title\'], LANG_text[\'popup_change_parental_current_pin_body\'], false, false, \'\', LANG_text[\'popup_change_parental_current_pin_confirm_btn\']);">'+LANG_text['my_device_parental_change_pin_button']+'</a>';
+var restrictContentDisabledBody = LANG_text['my_device_parental']+': '+LANG_text['my_device_parental_disabled']+' <br><a onclick="javascript:g_popup(\'enable_parental_pin\', LANG_text[\'popup_enable_parental_pin_title\'], LANG_text[\'popup_enable_parental_pin_body\'], false, false, \'\', LANG_text[\'popup_enable_parental_pin_confirm_btn\']);">'+LANG_text['my_device_parental_enable_button']+'</a>';
+
+function getCurrentDeviceData() {
+    var pgwBrowser = $.pgwBrowser();
+    var thisDeviceBody = deviceContentBody;
+    thisDeviceBody = thisDeviceBody.replace(/%DEVICENAME%/g, pgwBrowser.browser.name+" on "+pgwBrowser.os.name);
+    thisDeviceBody = thisDeviceBody.replace(/%DEVICEDATE%/, ddmmyyyy(new Date()/1000));
+    thisDeviceBody = thisDeviceBody.replace(/%DEVICEROW%/, "current_device");
+
+    var longReplaceString = '<a onclick="javascript:removeDevice(\`%DEVICEOPERATORID%\`,\'%DEVICENAMESHORT%\')"><img src="/ott/'+global_area_code+'/v1/images/member/device_trash.svg" class="device-trash"></a>';
+    var html_string = "";
+
+    // parental lock
+    // if(!md.mobile()){
+        if(Cookies.get("ParentalLockSetting") == "true"){
+            $("#device_del_header").hide();
+            $("#device_pl_header").show();
+
+            var parentalLock = new ParentalLock();
+            if(parentalLock.checkPinExists()){
+                html_string = '<div id="restrict_status">'+restrictContentEnabledBody+'</div>';
+            }else{
+                html_string = '<div id="restrict_status">'+restrictContentDisabledBody+'</div>';
+            }
+        }else{
+            $("#device_pl_header").hide();
+            $("#device_del_header").show();
+        }
+    // }else{
+    //     $("#devices-info-table th:last").html("");
+    // }
+    thisDeviceBody = thisDeviceBody.replace(longReplaceString, html_string);
+
+    $("#devices-info-table tbody").html(thisDeviceBody);
+}
+
+function updateRestrictStatus(){
+    var html_string = "";
+
+    if(Cookies.get("ParentalLockSetting") == "true"){
+        $("#device_del_header").hide();
+        $("#device_pl_header").show();
+
+        var parentalLock = new ParentalLock();
+        if(parentalLock.checkPinExists()){
+            html_string = '<div id="restrict_status">'+restrictContentEnabledBody+'</div>';
+        }else{
+            html_string = '<div id="restrict_status">'+restrictContentDisabledBody+'</div>';
+        }
+    }else{
+        $("#device_pl_header").hide();
+        $("#device_del_header").show();
+    }
+
+    $("#devices-info-table td:last").html(html_string);
+}
+
+function unbind(){
+	g_popup("unbind", LANG_text["popup_unbind_title"], LANG_text["popup_unbind_body"], false, true, LANG_text["popup_unbind_cancel_btn"], LANG_text["popup_unbind_confirm_btn"]);
+}
+
+function escapeQuotes( str ) {
+    return str.replace(/"/g, '\x22').replace(/'/g, '\x27');
+}
+
+function showOneOtherDevice(deviceData) {
+    var this_temp_body = deviceContentBody;
+    var e_date = ddmmyyyy(Date.parse(parseDate(deviceData.lastLoginTime)) / 1000);
+    var device_type = deviceData.platform ? deviceData.platform : "Unknown Device";
+    var device_name = deviceData.displayName === "Unknown" || !deviceData.displayName ? "Unknown Device" : deviceData.displayName;
+    var device_name_short = device_name;
+    var device_id = deviceData.deviceId;
+
+    device_name_short = device_name_short.replace(/'/g, "\\'");
+    device_name_short = device_name_short.replace(/"/g, "\\'");
+    var thisTempBody = this_temp_body.replace(/%DEVICENAME%/g, device_name);
+    thisTempBody = thisTempBody.replace(/%DEVICENAMESHORT%/g, device_name_short);
+    thisTempBody = thisTempBody.replace(/%DEVICEROW%/, "row-" + device_id);
+    thisTempBody = thisTempBody.replace(/%DEVICEOPERATORID%/, device_id);
+    thisTempBody = thisTempBody.replace(/%DEVICEDATE%/, e_date);
+    $("#other-devices-info-table tbody").append(thisTempBody);
+}
+
+function loadUserData(){
+    $("#viu_user_id").append("User ID:<span>"+user_id+"</span>");
+    
+	if (Cookies.get("operators")){
+		$("#user-vip, #vip-acc").show();
+		var operators_email = Cookies.get("operators");
+		var operators_body = Cookies.get("operators_body").split(":");
+
+		$("#vip-acc-list").append(operators_body[0]+":<span>"+operators_body[1]+"</span>");
+        if (Cookies.get("operators_unbind") == 1){
+            $("#vip-acc-list").append("<a class='unbind-btn' onclick='unbind();'>"+LANG_text["member_unbind"]+"</a>");
+        }
+    }
+    if (isVip) {
+        //其他装置
+        var deviceList_api = region.universal_api_endpoint + "concurrency/deviceList";
+        $.ajax({
+            url: deviceList_api,
+            //url: web_api_url + 'user/operators-device-list',
+            type: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + Cookies.get("token"),
+            }
+        }).done(function (response) {
+            //response = JSON.parse(response);
+            var data = response.deviceList;
+            if (data != null) {
+                if (data.length > 1 //不止一个
+                    || (data.length == 1 && data[0].deviceId != Cookies.get("_ottUID")) //只有一个时，必须不是当前设备才显示
+                ) {
+                    $("#other-devices-info-table").show();
+                    for (i = 0; i < data.length; i++) {
+                        if (data[i].deviceId != Cookies.get("_ottUID")) {
+                            //其他装置
+                            showOneOtherDevice(data[i]);
+                        }
+                    }
+                }
+
+                positionFooter();
+            }
+        });
+    }
+	var social_icon = "";
+    if (Cookies.get("account_type") == "2"){
+        social_icon = '<img src="/ott/'+global_area_code+'/v1/images/fb_icon.svg" style="width:16px!important;height:16px!important;margin-right:4px;">';
+    }
+	var premium_icon = "";
+    if(Cookies.get('user_level') == "3"){
+        premium_icon = '<img src="/ott/'+global_area_code+'/v1/images/pp_icon_24.png" style="width:24px!important;height:24px!important;margin-left:4px;"/>';
+    }else if(Cookies.get('user_level') == "2"){
+        premium_icon = '<img src="/ott/'+global_area_code+'/v1/images/p_icon_24.png" style="width:24px!important;height:24px!important;margin-left:4px;"/>';
+    }
+	$(".member-intro #user-name").html(premium_icon+social_icon+Cookies.get("nickname"));
+
+	var username = Cookies.get("username");
+
+	if (username.length > 35) {
+		username = username.substr(0, 35) + "...";
+	}
+
+	$(".member-intro #reg-acc span").html(username);
+
+	if ((Cookies.get("account_type") == "2" || Cookies.get("account_type") == "8") && Cookies.get("social_account_email") != "null" && Cookies.get("social_account_email") != ""){
+		$(".member-intro #social_acc_email").show();
+		$(".member-intro #social_acc_email span").html(Cookies.get("social_account_email"));
+	}
+
+	if (Cookies.get('head_portrait')){
+        if(Cookies.get('head_portrait') != "null"){
+            $(".member-figure img").attr('src', Cookies.get('head_portrait'));
+        }else{
+            $(".member-figure img").attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+        }
+	}else{
+		if　(Cookies.get('account_type') == "1"){ // email login
+			$(".member-figure img").attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+		}else if　(Cookies.get('account_type') == "2"){ // facebook login
+			$(".member-figure img").attr('src', 'http://graph.facebook.com/'+Cookies.get('social_account_id')+'/picture?type=square');
+		}else {
+			$(".member-figure img").attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+		}
+	}
+
+	loadData();
+}
+
+
+function removeDevice(user_operator_id, device_name) {
+    g_popup("redeem", LANG_text["confirm_remove_device"], "<span style='color:#FFF;'>" + LANG_text["confirm_remove_device_msg1"] + device_name + LANG_text["confirm_remove_device_msg2"] + "</span>", false, true, LANG_text["confirm_remove_cancel"], LANG_text["confirm_remove_ok"]);
+    $(".submit-btn").bind("click", function () {
+        var data = {deviceId: user_operator_id};
+        var remove_device_api = region.universal_api_endpoint + "concurrency/device";
+        $.ajax({
+            url: remove_device_api,
+            type: 'DELETE',
+            headers: {
+                'Authorization': 'Bearer ' + Cookies.get("token"),
+            },
+            data: data,
+            success: function (response) {
+                if (response.status == 1) {
+                    $("#row-" + user_operator_id).remove();
+                }
+            }
+        });
+    });
+}
+
+function loadPremiumInfo(){ //type=all, load data on All page
+    var billing_history_api = region.universal_api_endpoint+"subscription/paymentHistory";
+    $.ajax({
+        type: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + Cookies.get("token"),
+        },
+        url: billing_history_api,
+        success: function(response){
+            //console.log(response);
+        	//histResponse = JSON.parse(response);
+            histResponse = response;
+            histResponse.data = adapterForBillHistory(histResponse.data);
+            onDataLoadPremiumInfo();
+        }
+	});
+/*	
+	$.ajax({
+        type: 'GET',
+        dataType: 'json',
+		url: getbillinghistory_api_url + "api/getbillinghistory?user_id=" + user_id + "&country_id=" + global_area_id + "&language_flag_id=" + global_lang_id,
+		"headers": {
+			"Authorization": "Bearer tGVPFkCjxuKdWle98MG5jRddn095EzdJUgxio2994VEiP9VMtw2t0WzJcRln"
+		},
+        success: function(response){
+            console.log(response);
+        	histResponse = response;
+            onDataLoadPremiumInfo();
+        }
+	});
+*/
+}
+
+var billShow = 0;
+var billAdd = 3;
+function loadBillHistory() {
+    // Billing history
+	var billList = histResponse.data.history;
+	var row = "";
+	var bill_count = billList.length;
+	for(var i = billShow; i < billShow+billAdd; i++){
+		//var hideRow = "";
+	    if (i < bill_count) {
+            var billPlanName = billList[i].plan_name;
+//			billPlanName = "Credit Card HK";	//hardcode for testing
+			if (billPlanName.indexOf("Credit Card") != -1 && billPlanName.indexOf("Plus") != -1)	{
+				billPlanName = "credit_card_plus";
+			}else if (billPlanName.indexOf("Credit Card") != -1){
+				billPlanName = "credit_card";
+            }
+            billPlanName = billPlanName.toLowerCase();
+
+            if (billPlanName == "ais month" || billPlanName == "ais week" || billPlanName == "ais daily") {
+                var billName = LANG_text["planName_ais"] ? LANG_text["planName_ais"] : '';//统称ais
+            } else if (billPlanName == "globe ripley") {
+                var billName = LANG_text["planName_globe"] ? LANG_text["planName_globe"] : '';
+            } else {
+                var billName = LANG_text["planName_" + billPlanName] ? LANG_text["planName_" + billPlanName] : '';
+            }
+
+            var billDate = ddmmyyyy(billList[i].billing_date);
+
+            row += '<tr><td class="billHistName">'+billName+'<span class="histBillDate"><br class="tabletBR"> - '+billDate+' </span><span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span>';
+            if ( i == 0 && isVip ) {
+                row += '<span class="histCurrentMark">'+LANG_text["history_current_mark"]+'</span>';
+            }
+
+			row += '</td></tr>';
+
+            switch (billPlanName) {
+                case "free_premium":
+                    var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col expiryDate"><span>'+LANG_text["valid_till"]+'</span>'+billExpiry+'</div>\
+                            </td></tr>';
+                    break;
+                case "aep":
+                    var billEmail = billList[i].email;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["premium_email"]+'</span>'+billEmail+'</div>\
+                            </td></tr>';
+                    break;
+                case "mentholatum":
+                    var billEmail = billList[i].email;
+                    var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist2Col"><span>'+LANG_text["premium_email"]+': </span>'+billEmail+'</div>\
+                                <div class="hist2Col expiryDate"><span>'+LANG_text["valid_till"]+': </span>'+billExpiry+'</div>\
+                            </td></tr>';
+                    break;
+                case "ios_iap":
+				case "ios_iap_plus":
+                    var billOrderID = billList[i].order_id;
+                    //var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>Order ID: </span>'+billOrderID+'</div>\
+                            </td></tr>';
+                    break;
+                case "android_iap":
+				case "android_iap_plus":
+                    var billOrderID = billList[i].order_id;
+                    //var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>Order ID: </span>'+billOrderID+'</div>\
+                            </td></tr>';
+                    break;
+                case "csl":
+				case "csl_plus":
+                    var billPhone = billList[i].phone_number;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["csl_mobile"]+'</span>'+billPhone+'</div>\
+                            </td></tr>';
+					break;
+				case "kk_sim":
+				case "kk_sim_plus":
+                    var billPhone = billList[i].phone_number;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["kk_sim_mobile"]+'</span>'+billPhone+'</div>\
+                            </td></tr>';
+                    break;
+                case "sun_mobile":
+				case "sun_mobile_plus":
+                    var billPhone = billList[i].phone_number;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["sun_mobile"]+'</span>'+billPhone+'</div>\
+                            </td></tr>';
+                    break;
+                case "club_sim":
+				case "club_sim_plus":
+                    var billPhone = billList[i].phone_number;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["club_sim_mobile"]+'</span>'+billPhone+'</div>\
+                            </td></tr>';
+					break;
+				case "singtel":
+					var billEmail = billList[i].email;
+					row += '<tr><td class="billHistBody">\
+								<div class="hist1Col"><span>'+LANG_text["premium_email"]+': </span>'+billEmail+'</div>\
+							</td></tr>';
+					break;
+                case "redemption":
+				case "redemption_plus":
+                    var billRedeemNum = codeFormat(billList[i].redemption_code,4);
+                    var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    var billEventName = billList[i].event_name;
+                    var billPeriodNum = billList[i].period_number;
+                    var billPeriodType = billList[i].period_type;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist2Col"><span>'+LANG_text["redemption_code"]+'</span>'+billRedeemNum+'</div>\
+                                <div class="hist2Col"><span>'+LANG_text["period"]+'</span>'+billPeriodNum+" "+billPeriodType+'</div>\
+                            </td></tr>';
+					break;
+				case "paydollar":
+                    var billCardNo = billList[i].card_number;
+                    var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    var billPaymentRef = billList[i].payment_ref;
+                    var billMerchantRef = billList[i].merchant_ref;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["credit_card_number"]+': </span>'+billCardNo+'</div>\
+                            </td></tr>';
+                    break;
+                case "2c2p":
+                    var billCardNo = billList[i].card_number;
+                    var billExpiry = ddmmyyyy(billList[i].expire_date);
+                    var billPaymentRef = billList[i].payment_ref;
+                    var billMerchantRef = billList[i].merchant_ref;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["credit_card_number"]+': </span>'+billCardNo+'</div>\
+                            </td></tr>';
+					break;
+				case "ais":
+                    var billPhone = billList[i].phone_number;
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["ais_number"]+': </span>'+billPhone+'</div>\
+                            </td></tr>';
+                    break;
+                case "ais month":
+                case "ais week":
+                case "ais daily":
+                    var billPhone = billList[i].phone_number;
+
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["ais_number"]+': </span>'+billPhone+'</div>';
+                    
+                    var play_box_flag = billPhone.indexOf('PLAY_BOX');
+
+                    if (play_box_flag > 0) {
+                        row += '</td></tr>';
+                    }else {
+                        var order_code = billList[i].order_code;
+                        
+                        if (order_code != "") {
+                            row += '<div id="invoice_'+order_code+'" class="float-right" style="cursor:pointer;" onclick="var win = window.open(\'\'); ais_invoice_popup(win, \''+order_code+'\');"><img src="/ott/th/v1/images/member/icon_payment.png"/></div>';
+                        }
+                        
+                        row += '</td></tr>';
+
+                        var lang = "";
+                        if (global_lang_id == 3) {
+                            lang = "en-th";
+                        }else {
+                            lang = "th-th";
+                        }
+
+                        var md5_str = md5("lang="+lang+"&provider=ais&transaction_id="+order_code);
+
+                        $.ajax({
+                            "async": true,
+                            "crossDomain": true,
+                            "url": ais_api_router+"payment/gen-invoice",
+                            "method": "POST",
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "Authorization": "Basic "+ais_basic_auth
+                            },
+                            "processData": false,
+                            "data": JSON.stringify({"provider":"ais", "transaction_id":order_code, "lang":lang, "_sign":md5_str})
+                        }).done(function(response_data) {
+                            if (response_data.code == "50000" && response_data.data.code == "70001") {
+                                $("#invoice_"+order_code).attr("onclick", "ais_payment_not_settle_dialog_show()");
+                            }
+                        });
+                    }
+                    
+                    break;
+                case "true month":
+                case "true week":
+                case "true daily":
+                    var billPhone = billList[i].phone_number;
+
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["true_number"]+': </span>'+billPhone+'</div>';                    
+                    row += '</td></tr>';
+                    
+                    break;
+				case "credit_card":
+				case "credit_card_plus":
+					var order_code = billList[i].order_code;
+
+					row += '<tr><td class="billHistBody">\
+								<div class="hist1Col" style="width:auto;"><span>'+LANG_text["transaction_number"]+'</span>'+order_code+'</div>';
+					row += '<div class="float-right" style="cursor:pointer;" onclick="receipt_popup(\''+order_code+'\');"><img src="/ott/'+global_area_code+'/v1/images/member/icon_payment.png"/></div>';
+					row += '</td></tr>';
+
+					break;
+                case "sg m1":
+                case "sg starhub":
+                    row += '<tr><td class="billHistBody"></td></tr>';
+
+					break;
+				case "smart":
+                case "globe":
+                case "globe ripley":
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"> </div>';                    
+                    row += '</td></tr>';
+                    
+                    break;
+                case "pldt":
+                    var billPhone = billList[i].phone_number;
+
+                    row += '<tr><td class="billHistBody">\
+                                <div class="hist1Col"><span>'+LANG_text["pldt_number"]+': </span>'+billPhone+'</div>';                    
+                    row += '</td></tr>';
+                    
+                    break;
+            }
+            $("#all-billing-btn").show();
+        } else {
+            $("#all-billing-btn").hide();
+        }
+	}
+
+    if (row!=""){
+        $("#billNoRecord").addClass("none");
+    }
+    $('#billing-info-table').append(row);
+    billShow += billAdd;
+    billAdd = 10;
+
+    positionFooter();
+}
+
+function ais_invoice_popup(win, transaction_id) {
+    var lang = "";
+    if (global_lang_id == 3) {
+        lang = "en-th";
+    }else {
+        lang = "th-th";
+    }
+
+    var md5_str = md5("lang="+lang+"&provider=ais&transaction_id="+transaction_id);
+
+    $.ajax({
+        "async": true,
+        "crossDomain": true,
+        "url": ais_api_router+"payment/gen-invoice",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Basic "+ais_basic_auth
+        },
+        "processData": false,
+        "data": JSON.stringify({"provider":"ais", "transaction_id":transaction_id, "lang":lang, "_sign":md5_str})
+    }).done(function(response_data) {
+        if (response_data.code == "20000") {
+            win.document.body.innerHTML = response_data.data.page;
+        }else if (response_data.code == "50000" && response_data.data.code == "70001") {
+            ais_payment_not_settle_dialog_show();
+        }
+    });
+}
+
+function ais_payment_not_settle_dialog_show() {
+    $("#ais_payment_not_settle_dialog").toggleClass("none");
+    $("body").addClass("float-hidden");
+}
+
+function receipt_popup(transaction_id) {
+	var receipt_popup_w = window.open();
+
+	var json_string = JSON.stringify({
+        user_id: user_id,
+		txn_id: transaction_id,
+		area_id: global_area_id,
+		language_flag_id: global_lang_id,
+		txn_type: "subscription"
+    });
+
+    // encrypt data for payment center
+    $.ajax({
+        type: 'POST',
+        url: "/ott/misc/webview/payment/data_encrypt.php",
+        data: {data: json_string},
+        success:function(response_data) {
+            receipt_popup_w.location = payment_form_url+"receipts/?"+env_str+"&data="+response_data;
+        }
+    });
+}
+
+var ais_mobile = "";
+var pldt_mobile = "";
+function onDataLoadPremiumInfo(){
+    var response = histResponse;
+    console.log(histResponse);
+	// Premium info
+	var curr = "";
+	var expire_date = ddmmyyyy(response.data.expire_date);
+	var billPlanName = response.data.plan_name;
+//	billPlanName = "Credit Card HK";	//hardcode for testing	
+	if (billPlanName.indexOf("Credit Card") != -1 && billPlanName.indexOf("Plus") != -1)	{
+		billPlanName = "credit_card_plus";
+	}else if (billPlanName.indexOf("Credit Card") != -1){
+		billPlanName = "credit_card";
+	}
+    billPlanName = billPlanName.toLowerCase();
+
+    var billName = "";
+    if (billPlanName == "globe ripley") {
+        billName = LANG_text["planName_globe"] ? LANG_text["planName_globe"] : '';
+    } else if (billPlanName == "ais month" || billPlanName == "ais week" || billPlanName == "ais daily") {
+        billName = LANG_text["planName_ais"] ? LANG_text["planName_ais"] : '';//统称 ais
+    } else {
+        billName = LANG_text["planName_" + billPlanName] ? LANG_text["planName_" + billPlanName] : '';
+    }
+
+
+
+    var billDate = ddmmyyyy(response.data.billing_date);
+
+    switch (billPlanName) {
+        case "free_premium":
+            var billExpiry = expire_date;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["valid_till"]+'</td><td class="currentExpiry">'+billExpiry+'<span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "aep":
+            var billEmail = response.data.email;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["premium_email"]+'</td><td>'+billEmail+'</td></tr>';
+            break;
+        case "mentholatum":
+            var billEmail = response.data.email;
+            var billExpiry = expire_date;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["premium_email"]+'</td><td>'+billEmail+'</td></tr>\
+                    <tr><td>'+LANG_text["valid_till"]+'</td><td class="currentExpiry">'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "ios_iap":
+		case "ios_iap_plus":
+            var billOrderID = response.data.order_id;
+            var billExpiry = ddmmyyyy(response.data.next_billing_date);
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>Order ID: </td><td>'+billOrderID+'</td></tr>\
+                    <tr><td>'+LANG_text["next_billing"]+'</td><td>'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "android_iap":
+		case "android_iap_plus":
+            var billOrderID = response.data.order_id;
+            var billExpiry = ddmmyyyy(response.data.next_billing_date);
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>Order ID: </td><td>'+billOrderID+'</td></tr>\
+                    <tr><td>'+LANG_text["next_billing"]+'</td><td>'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "csl":
+		case "csl_plus":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["csl_mobile"]+'</td><td>'+billPhone+'</td></tr>';
+			break;
+		case "kk_sim":
+		case "kk_sim_plus":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["csl_mobile"]+'</td><td>'+billPhone+'</td></tr>';
+            break;
+        case "sun_mobile":
+		case "sun_mobile_plus":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["sun_mobile"]+'</td><td>'+billPhone+'</td></tr>';
+            break;
+        case "singtel":
+		case "singtel_plus":
+            var billEmail = response.data.email;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["premium_email"]+'</td><td>'+billEmail+'</td></tr>';
+            break;
+        case "club_sim":
+		case "club_sim_plus":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["club_sim_mobile"]+'</td><td>'+billPhone+'</td></tr>';
+			break;
+		case "singtel":
+            var billEmail = response.data.email;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["premium_email"]+': </td><td>'+billEmail+'</td></tr>';
+            break;
+        case "redemption":
+		case "redemption_plus":
+            var billRedeemNum = codeFormat(response.data.redemption_code,4);
+            var billExpiry = expire_date;
+            var billEventName = response.data.event_name;
+            var billPeriodNum = response.data.period_number;
+            var billPeriodType = response.data.period_type;
+            curr += '<tr><td>'+LANG_text["history_description"]+'</td><td>'+billEventName+' - '+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+'</td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["redemption_code"]+'</td><td>'+billRedeemNum+'</td></tr>\
+                    <tr><td>'+LANG_text["period"]+'</td><td>'+billPeriodNum+billPeriodType+'</td></tr>\
+                    <tr><td>'+LANG_text["valid_till"]+'</td><td class="currentExpiry">'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+			break;
+		case "paydollar":
+            var billCardNo = response.data.card_number;
+            var billExpiry = ddmmyyyy(response.data.expire_date);
+            var billPaymentRef = response.data.payment_ref;
+            var billMerchantRef = response.data.merchant_ref;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["credit_card_number"]+': </td><td>'+billCardNo+'</td></tr>\
+                    <tr><td>'+LANG_text["payment_ref"]+': </td><td>'+billPaymentRef+'</td></tr>\
+                    <tr><td>'+LANG_text["merchant_ref"]+': </td><td>'+billMerchantRef+'</td></tr>\
+                    <tr><td>'+LANG_text["next_billing"]+': </td><td>'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "2c2p":
+            var billCardNo = response.data.card_number;
+            var billExpiry = ddmmyyyy(response.data.expire_date);
+            var billPaymentRef = response.data.payment_ref;
+            var billMerchantRef = response.data.merchant_ref;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["credit_card_number"]+': </td><td>'+billCardNo+'</td></tr>\
+                    <tr><td>'+LANG_text["payment_ref"]+': </td><td>'+billPaymentRef+'</td></tr>\
+                    <tr><td>'+LANG_text["merchant_ref"]+': </td><td>'+billMerchantRef+'</td></tr>\
+                    <tr><td>'+LANG_text["next_billing"]+': </td><td>'+billExpiry+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+			break;
+		case "ais":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["ais_number"]+': </td><td>'+billPhone+'</td></tr>';
+            break;
+        case "ais month":
+        case "ais week":
+        case "ais daily":
+            var billPhone = response.data.phone_number;
+            //for testing
+//            billPhone = "AIS-66923029856-38 (Hardcode for testing)";
+
+            var play_box_flag = billPhone.indexOf('PLAY_BOX');
+
+            if (play_box_flag > 0) {
+                $.ajax({
+                    "async": true,
+                    "crossDomain": true,
+                    "url": ais_playbox_api_router+"subscription/detail/get",
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic "+ais_playbox_basic_auth
+                    },
+                    "processData": false,
+                    "data": JSON.stringify({"uuid":billPhone})
+                }).done(function(subscription_detail) {
+                    if (subscription_detail.code == "20000") {       
+                        var sku_name = "";           
+                        if (subscription_detail.data.sku_info.extra.partner_sku_name != undefined)
+                        {
+                            sku_name = subscription_detail.data.sku_info.extra.partner_sku_name;
+                        }
+                        
+                        var next_billing_date = "";
+                        if (subscription_detail.data.next_recurring_time != undefined)
+                        {
+                            var next_recurring_time_seg = subscription_detail.data.next_recurring_time.split(" ");
+                            var next_billing_date_seg = next_recurring_time_seg[0].split("-");
+                            next_billing_date = next_billing_date_seg[2] + " / " + next_billing_date_seg[1] + " / " + next_billing_date_seg[0];
+                        }
+
+                        var date_text = "";
+                        if (subscription_detail.data.subscription_can_cancel == 1) {
+                            date_text = LANG_text["next_billing_date"];
+                        }else {
+                            date_text = LANG_text["validity_till_date"];
+                        }
+
+                        curr += '<tr><td>'+LANG_text["subscription_method"]+': </td><td>'+sku_name+'</td></tr>\
+                        <tr><td>'+LANG_text["billing_number"]+': </td><td>'+billPhone+'</td></tr>\
+                        <tr style="display:contents"><td>'+date_text+'</td><td>'+next_billing_date+'<span class="ddmmyyyy"> '+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+
+                        $('#premium-info-table').append(curr);
+                    }
+                });
+            }else {
+                ais_mobile = billPhone.split("-")[1];
+
+                $.ajax({
+                    "async": true,
+                    "crossDomain": true,
+                    "url": ais_api_router+"subscription/get",
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic "+ais_basic_auth
+                    },
+                    "processData": false,
+                    "data": JSON.stringify({"provider":"ais","partner_user_id":ais_mobile})
+                }).done(function(subscription_detail) {
+                    if (subscription_detail.code == "20000") {       
+                        var sku_name = "";           
+                        if (subscription_detail.data.sku_info.sku_name != undefined)
+                        {
+                            sku_name = subscription_detail.data.sku_info.sku_name;
+                        }
+                        
+                        var next_billing_date = "";
+                        if (subscription_detail.data.next_recurring_time != undefined)
+                        {
+                            var next_recurring_time_seg = subscription_detail.data.next_recurring_time.split(" ");
+                            var next_billing_date_seg = next_recurring_time_seg[0].split("-");
+                            next_billing_date = next_billing_date_seg[2] + " / " + next_billing_date_seg[1] + " / " + next_billing_date_seg[0];
+                        }
+                        
+                        var next_billing_date_flag = "";
+                        (subscription_detail.data.subscription_can_cancel) ? next_billing_date_flag = "contents" : next_billing_date_flag = "none";
+            
+                        (subscription_detail.data.subscription_can_cancel) ? $('#cancel_ais_subscription_btn').show() : "";
+    //                    (subscription_detail.data.subscription_can_restart) ? $('#restart_ais_subscription_btn').show() : "";
+
+                        curr += '<tr><td>'+LANG_text["subscription_method"]+': </td><td>'+sku_name+'</td></tr>\
+                        <tr><td>'+LANG_text["billing_number"]+': </td><td>'+billPhone+'</td></tr>\
+                        <tr style="display:'+next_billing_date_flag+'"><td>'+LANG_text["next_billing_date"]+'</td><td>'+next_billing_date+'<span class="ddmmyyyy"> '+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+
+                        $('#premium-info-table').append(curr);
+                    }
+                });
+            }
+            
+            break;
+        case "true month":
+        case "true week":
+        case "true daily":
+            var billPhone = response.data.phone_number;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>\
+                    <tr><td>'+LANG_text["true_number"]+': </td><td>'+billPhone+'</td></tr>';
+            break;
+		case "credit_card":
+		case "credit_card_plus":
+            curr += '<tr><td>'+LANG_text["credit_card_plan"]+'</td><td>'+billName+'</td></tr>\
+					<tr id="credit_card_number_tr"><td>'+LANG_text["credit_card_number"]+'</td><td id="credit_card_number"></td></tr>\
+					<tr id="expiry_date_tr"><td>'+LANG_text["expiry_date"]+'</td><td id="expiry_date"></td></tr>\
+					<tr id="next_billing_date_tr"><td>'+LANG_text["next_billing_date"]+'</td><td id="next_billing_date"></td></tr>\
+					<tr id="card_premium_till_tr"><td>'+LANG_text["card_premium_till"]+'</td><td id="card_premium_till"></td></tr>\
+					<tr id="description_tr"><td>'+LANG_text["description"]+'</td><td id="description"></td></tr>\
+					<tr id="order_id_tr"><td>'+LANG_text["order_id"]+'</td><td id="order_id"></td></tr>\
+					<tr id="serial_number_tr"><td>'+LANG_text["serial_number"]+'</td><td id="serial_number"></td></tr>\
+					<tr id="shipment_tracking_number_tr"><td>'+LANG_text["shipment_tracking_number"]+'</td><td id="shipment_tracking_number"></td></tr>';
+			break;
+		case "sg m1":
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "sg starhub":
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+			break;
+		case "smart":
+            var billExpiry = expire_date;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "globe":
+        case "globe ripley":
+            var billExpiry = expire_date;
+            curr += '<tr><td>'+LANG_text["history_description"]+': </td><td>'+billName+'</td></tr>\
+                    <tr><td>'+LANG_text["last_billing"]+': </td><td>'+billDate+' <span class="ddmmyyyy">'+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+            break;
+        case "pldt":
+            pldt_mobile = response.data.phone_number;
+
+            $.ajax({
+                "async": true,
+                "crossDomain": true,
+                "url": pldt_api_router+"api/subscription/detail",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic "+pldt_basic_auth
+                },
+                "processData": false,
+                "data": JSON.stringify({"uuid":pldt_mobile})
+            }).done(function(subscription_detail) {
+                if (subscription_detail.code == "20000") {       
+                    var sku_name = "";           
+                    if (subscription_detail.data.sku_info.sku_name != undefined)
+                    {
+                        sku_name = subscription_detail.data.sku_info.sku_name;
+                    }
+                    
+                    var next_billing_date = "";
+                    if (subscription_detail.data.next_recurring_time != undefined)
+                    {
+                        var next_recurring_time_seg = subscription_detail.data.next_recurring_time.split(" ");
+                        var next_billing_date_seg = next_recurring_time_seg[0].split("-");
+                        next_billing_date = next_billing_date_seg[2] + " / " + next_billing_date_seg[1] + " / " + next_billing_date_seg[0];
+                    }
+                    
+                    var next_billing_date_flag = "";
+                    (subscription_detail.data.subscription_can_cancel) ? next_billing_date_flag = "contents" : next_billing_date_flag = "none";
+        
+                    (subscription_detail.data.subscription_can_cancel) ? $('#cancel_pldt_subscription_btn').show() : "";
+
+                    curr += '<tr><td>'+LANG_text["subscription_method"]+': </td><td>'+sku_name+'</td></tr>\
+                    <tr><td>'+LANG_text["billing_number"]+': </td><td>'+pldt_mobile+'</td></tr>\
+                    <tr style="display:'+next_billing_date_flag+'"><td>'+LANG_text["next_billing_date"]+'</td><td>'+next_billing_date+'<span class="ddmmyyyy"> '+LANG_text["dd_mm_yyyy"]+'</span></td></tr>';
+
+                    $('#premium-info-table').append(curr);
+                }
+            });
+            
+            break;
+    }
+    $('#premium-info-table').append(curr);
+
+	loadBillHistory();
+
+	/*if (bill_count <= 5){
+		("#all-billing-btn").hide();
+	}else{
+		$("#all-billing-btn").bind( "click", function() {
+			$("#billing-info-table tr").fadeIn();
+			$(this).fadeOut();
+		});
+	}*/
+}
+
+function loadDataFavorite(type){ //type=all, load data on All page
+	if (!follow_reach_end){
+		var tab_id = 1;
+		if(loading[tab_id]) return;
+		loading[tab_id] = true;
+		$('.loading').show();
+		page[tab_id]++;
+		//offset[tab_id] = pagesize*(page[tab_id]-1);
+		offset[tab_id] = page[tab_id];
+		var api = api_url+'user/follow'+web_api_tail+'&user_id='+user_id;
+		$.ajax({
+			url: api,
+			type: 'get',
+			dataType: 'json',
+			//data: data,
+			success: onDataLoadFavorite
+		});
+	}
+}
+
+function onDataLoadFavorite(json){
+	var tab_id = 0;
+	//var follow_data = json.data.follow;
+    var follow_data_other = json.data.tv;
+	var follow_data_movie = json.data.movie;
+    var follow_data;
+    if (follow_data_other && follow_data_other.length) {
+        if (follow_data_movie && follow_data_movie.length) {
+            follow_data = follow_data_other.concat(follow_data_movie);
+        } else {
+            follow_data = follow_data_other;
+        }
+    } else {
+        follow_data = follow_data_movie;
+    }
+
+	var follow_item_itr = 0;
+	$(".body").attr("style", "");
+
+	if(follow_data && follow_data.length){
+		follow_has_data = true;
+		var item_count = follow_data.length;
+		if (follow_data.length > 10){
+			item_count = (tab_index == 0)? 9:follow_data.length;
+		}
+        // Movie updates
+        var rowTemp = "";
+		var rowMovie = "";
+        var rowOther = "";
+		var row = "";
+        var clearElement = '<div class="clearfix"></div>';
+		for(var i=0; i<item_count; i++){
+			/*if (follow_item_itr==0 || follow_item_itr%midNum == 0){
+				row += '<div class="float-hidden">';
+			}*/
+            var epi_display = "";
+            var epi_status_display = "removed";
+            var epi_img_display = "";
+            var epi_link = "#";
+            var epi_status_name = [];
+            var epi_status = follow_data[i].status;
+            //var epi_status = 2;
+			var trackingEv = "";
+
+			if (epi_status <= 3){
+				if (follow_data[i].is_series_updated>0){
+					trackingEv = "onclick=\"eventTracking(\'notificationClick\', "+follow_data[i].product_id+")\"";
+				}
+				
+
+	            if (follow_data[i].is_movie==1) {
+	                epi_display = "";
+	            } else {
+	            	if (epi_status == 0){
+						if(parseInt(follow_data[i].product_number) < parseInt(follow_data[i].product_total)){
+							epi_display = '<span class="psa play-ep ptc">'+LANG_text["general_latest_epi_1"]+follow_data[i].product_number+LANG_text["general_latest_epi_2"]+'</span>';
+						}else{
+							epi_display = '<span class="psa play-ep ptc">'+LANG_text["general_epi_total_1"]+follow_data[i].product_number+LANG_text["general_epi_total_2"]+'</span>';
+						}
+	                }
+
+                    if(region.is_vuclip_regions){
+						if (typeof follow_data[i].contenttype !== "undefined") {
+							switch (follow_data[i].contenttype) {
+								case "trailers":
+								case "songs":
+								case "clips":
+									epi_display = '<span class="psa play-ep ptc">'+LANG_text['content_type_'+follow_data[i].contenttype]+'</span>';
+									break;
+							}
+						}
+					}
+	            }
+
+				if (follow_data[i].user_level==3) {
+                    epi_display += '<span class="psa premium_icon"><img src="/ott/'+global_area_code+'/v1/images/pp_icon_24.png" /></span>';
+                }else{
+                    if (follow_data[i].product_free_time > currentTime) {
+                        epi_display += '<span class="psa premium_icon"><img src="/ott/'+global_area_code+'/v1/images/p_icon_24.png" /></span>';
+                    }
+                }
+
+                epi_status_name[0] = "";
+	        	epi_status_name[1] = LANG_text["general_removed_unavailable"];
+                epi_status_name[2] = LANG_text["general_removed_unload"];
+                epi_status_name[3] = LANG_text["general_removed_deleted"];
+
+	            if (epi_status == 0){
+	            	epi_status_display = "";
+	            	epi_img_display = '<img src="'+follow_data[i].series_cover_image_url+'" width="166" height="93" alt="">';
+	            	if (typeof follow_data[i].poster_logo_url !== "undefined" && follow_data[i].poster_logo_url != "" && follow_data[i].poster_logo_url != null) {
+                        epi_img_display += '<span class="psa poster_logo"><img src="'+follow_data[i].poster_logo_url+'" /></span>';
+                    }
+                    epi_link = "/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/vod/"+follow_data[i].product_id+'/'+follow_data[i].series_name;
+	            }
+
+                var cat_name = "";
+                if(!region.is_vuclip_regions){
+                    cat_name = (follow_data[i].is_series_updated>0?'<img src="/ott/'+global_area_code+'/v1/images/member/ico_updated.png"/>':'')+'<a href="/ott/'+global_area_code+'/'+global_url_code+global_cpreference_link+'/vod/'+follow_data[i].product_id+'/'+follow_data[i].series_name+'" target="_self" '+trackingEv+'>'+follow_data[i].series_category_name+'</a>';
+                }
+				rowTemp = '<li class="grid grid-item-'+follow_item_itr+' '+epi_status_display+'" product_id="'+follow_data[i].product_id+'" series_name="'+follow_data[i].name+'" series_category_name="'+follow_data[i].series_category_name+'" product_number="'+follow_data[i].product_number+'" >\
+							<a class="figure" href="'+epi_link+'" target="_self" '+trackingEv+'>\
+								'+epi_img_display+'\
+								<span class="psa play-shadow">'+epi_status_name[epi_status]+'</span>\
+								<span class="psa play-ico"></span>\
+	                            '+epi_display+'\
+							</a>\
+							<p>\
+								<span class="figure-title mlink"><a href="'+epi_link+'" target="_self" '+trackingEv+'>'+follow_data[i].series_name+'</a></span>\
+                                <span class="figure-desc link">'+cat_name+'</span>\
+							</p>\
+							<a href="javascript:;" class="psa rcd-del none" id="del_btn" product_id="'+follow_data[i].product_id+'"></a>\
+						</li>';
+
+	            if (follow_data[i].is_movie==1) {
+	                rowMovie += rowTemp;
+	            } else {
+	                rowOther += rowTemp;
+	            }
+
+				follow_item_itr++;
+			}
+		}
+		if (tab_index == 0){
+			if (follow_data.length > 10){
+				row += '<li class="grid grid-item-all">\
+				<a class="figure" href="/ott/'+global_area_code+'/'+global_url_code+global_cpreference_link+'/member/favorite">'+LANG_text["member_all"]+'>\
+				<img src="'+follow_data[9].series_cover_image_url+'" width="166" height="93" alt="">\
+				<span class="psa play-shadow"></span>\
+				</a></li>';
+			}
+			$("#all-bookmark-list .all-list-header").text(LANG_text["member_bookmark"]+" ("+follow_data.length+")");
+
+			$('#all-bookmark-list .all-list-body').append(row);
+		}else{
+
+			//$('#favorite_list').append(row);
+            if (rowMovie != "") {
+                $('#favorite_list_movie').append(rowMovie);
+                $('#favorite_list_movie').append(clearElement);
+            } else {
+                $('#favorite_list_movie').hide();
+                $('.favorite_list_title').hide();
+            }
+            if (rowOther != "") {
+                $('#favorite_list_other').append(rowOther);
+                $('#favorite_list_other').append(clearElement);
+            } else {
+                $('#favorite_list_other').hide();
+                $('.favorite_list_title').hide();
+            }
+		}
+	}else{
+		if (!follow_has_data){
+			if (tab_index == 0){
+				$("#all-bookmark-list .all-list-header").text(LANG_text["member_bookmark_history"]+" (0)");
+				$('#all-bookmark-list .all-list-body').append('<div class="no-result">'+LANG_text["member_no_bookmark"]+'</div>');
+			}else{
+				$('#favorite_list').empty().append('<div class="no-result">'+LANG_text["member_no_bookmark"]+'</div>');
+			}
+		}
+		follow_reach_end = true;
+	}
+
+	$('#favorite_list li').mouseover(function(){
+		$('#del_btn', this).show();
+	}).mouseout(function(){
+		$('#del_btn', this).hide();
+	});
+
+	$('#favorite_list li #del_btn').click(function(){
+		//alert($(this).attr('product_id'));
+		var li = $(this).closest('li');
+		var product_id = $(this).attr('product_id');
+		var data = JSON.stringify({user_id:user_id, product_id:product_id, platform_flag_label:'web'});
+		var api = api_url+'user/follow'+web_api_tail;
+		$.ajax({
+			url: api,
+			type: 'DELETE',
+			contentType: 'text/plain; charset=utf-8',
+			dataType: 'json',
+			data: data,
+			success: function(json){
+				li.fadeOut().remove();
+				if ($('#favorite_list li').length == 0){
+					$('#favorite_list').empty().append('<div class="no-result">'+LANG_text["member_no_bookmark"]+'</div>');
+				}
+			}
+		});
+	});
+
+	loading[tab_id] = false;
+	$('.loading').hide();
+
+	positionFooter();
+	initImgs();
+}
+
+function loadDataHistory(type){ // type=all, load data on All page
+	if (!history_reach_end){
+		var tab_id = 2;
+		if(loading[tab_id]) return;
+		loading[tab_id] = true;
+		$('.loading').show();
+		page[tab_id]++;
+		offset[tab_id] = page[tab_id];
+		var api = api_url+'user/history'+web_api_tail+'&user_id='+user_id;
+		$.ajax({
+			url: api,
+			type: 'get',
+			dataType: 'json',
+			//data: data,
+			success: onDataLoadHistory
+		});
+	}
+}
+
+function onDataLoadHistory(json){
+	var tab_id = 1;
+	var history_item_itr = 0;
+    var history_data;
+
+    if (json.data !== null) {
+        var history_data_other = json.data.tv;
+        var history_data_movie = json.data.movie;
+        
+        if (history_data_other && history_data_other.length) {
+            if (history_data_movie && history_data_movie.length) {
+                history_data = history_data_other.concat(history_data_movie);
+            } else {
+                history_data = history_data_other;
+            }
+        } else {
+            history_data = history_data_movie;
+        }
+    }
+    
+	$(".body").attr("style", "");
+
+	//$('#history_list').empty();
+	if(history_data && history_data.length){
+		history_has_data = true;
+		var item_count = history_data.length;
+
+		if (history_data.length > 10){
+			item_count = (tab_index == 0)? 9:history_data.length;
+		}
+		// Movie updates
+        var rowTemp = "";
+        var rowMovie = "";
+        var rowOther = "";
+        var clearElement = '<div class="clearfix"></div>';
+		for(var i=0; i<item_count; i++){
+			//if(!json.data.history[i]) break;
+			/*if (history_item_itr==0 || history_item_itr%midNum == 0){
+				row += '<div class="float-hidden">';
+			}*/
+            var epi_display = "";
+            var epi_status_display = "removed";
+            var epi_img_display = "";
+            var epi_link = "#";
+            var epi_status_name = [];
+            var epi_status = history_data[i].status;
+            //var epi_status = 2;
+
+            if (epi_status <= 3){
+            	if (history_data[i].is_movie==1) {
+	                epi_display = "";
+	            } else {
+	            	if (epi_status == 0){
+	                	epi_display = '<span class="psa play-ep ptc">'+LANG_text["general_epi_1"]+history_data[i].product_number+LANG_text["general_epi_2"]+'</span>';
+	                }
+                    if(region.is_vuclip_regions){
+						if (typeof history_data[i].contenttype !== "undefined") {
+							switch (history_data[i].contenttype) {
+								case "trailers":
+								case "songs":
+								case "clips":
+									epi_display = '<span class="psa play-ep ptc">'+LANG_text['content_type_'+history_data[i].contenttype]+'</span>';
+									break;
+							}
+						}
+					}
+	            }
+
+				if (history_data[i].user_level==3) {
+                    epi_display += '<span class="psa premium_icon"><img src="/ott/'+global_area_code+'/v1/images/pp_icon_24.png" /></span>';
+                }else{
+                    if (history_data[i].product_free_time > currentTime) {
+                        epi_display += '<span class="psa premium_icon"><img src="/ott/'+global_area_code+'/v1/images/p_icon_24.png" /></span>';
+                    }
+                }
+
+                epi_status_name[0] = "";
+	            epi_status_name[1] = LANG_text["general_removed_unavailable"];
+                epi_status_name[2] = LANG_text["general_removed_unload"];
+                epi_status_name[3] = LANG_text["general_removed_deleted"];
+
+	            if (epi_status == 0){
+	            	epi_status_display = "";
+	            	epi_img_display = '<img src="'+history_data[i].series_cover_image_url+'" width="166" height="93" alt="">';
+	            	if (typeof history_data[i].poster_logo_url !== "undefined" && history_data[i].poster_logo_url != "" && history_data[i].poster_logo_url != null) {
+                        epi_img_display += '<span class="psa poster_logo"><img src="'+history_data[i].poster_logo_url+'" /></span>';
+                    }
+                    epi_link = "/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/vod/"+history_data[i].product_id+'/'+history_data[i].series_name;
+	            }
+
+                var cat_name = "";
+                if(!region.is_vuclip_regions){
+                    cat_name = (history_data[i].is_series_updated>0?'<img src="/ott/'+global_area_code+'/v1/images/member/ico_updated.png"/>':'')+'<a href="/ott/'+global_area_code+'/'+global_url_code+global_cpreference_link+'/vod/'+history_data[i].product_id+'/'+history_data[i].series_name+'" target="_self" >'+history_data[i].series_category_name+'</a>';
+                }
+				rowTemp = '<li class="grid grid-item-'+history_item_itr+' '+epi_status_display+'" product_id="'+history_data[i].product_id+'">\
+							<a class="figure" href="'+epi_link+'" target="_self">\
+								'+epi_img_display+'\
+								<span class="psa play-shadow">'+epi_status_name[epi_status]+'</span>\
+								<span class="psa play-ico"></span>\
+								'+epi_display+'\
+							</a>\
+							<p>\
+								<span class="figure-title mlink"><a href="'+epi_link+'" target="_self">'+history_data[i].series_name+'</a></span>\
+								<span class="figure-desc link">'+cat_name+'</span>\
+							</p>\
+							<a href="javascript:;" class="psa rcd-del none" id="del_btn" product_id="'+history_data[i].product_id+'"></a>\
+						</li>';
+
+	            if (history_data[i].is_movie==1) {
+	                rowMovie += rowTemp;
+	            } else {
+	                rowOther += rowTemp;
+	            }
+				// only 1th - 5th grid item have margin
+				/*if (history_item_itr > 7){
+					history_item_itr = 1;
+				}*/
+				/*history_item_itr++;
+
+				if (history_item_itr >= midNum){
+					history_item_itr = 0;
+					row += '</div>';
+				}*/
+				history_item_itr++;
+            }           
+		}
+		/*if (history_item_itr < midNum){
+			row += '</div>';
+		}*/
+		if (tab_index == 0){
+			if (history_data.length > 10){
+				row += '<li class="grid grid-item-all">\
+				<a class="figure" href="/ott/'+global_area_code+'/'+global_url_code+global_cpreference_link+'/member/record">\
+				<img src="'+history_data[9].series_cover_image_url+'" width="166" height="93" alt="">\
+				<div class="thumbAll">'+LANG_text["member_showall"]+' ></div>\
+				<span class="psa play-shadow"></span>\
+				</a></li>';
+			}
+			$("#all-history-list .all-list-header").text(LANG_text["member_history"]+" ("+history_data.length+")");
+			$('#all-history-list .all-list-body').append(row);
+		}else{
+			//$('#history_list').append(row);
+            if (rowMovie != "") {
+                $('#history_list_movie').append(rowMovie);
+                $('#history_list_movie').append(clearElement);
+            } else {
+                $('#history_list_movie').hide();
+                $('.history_list_title').hide();
+                
+            }
+            if (rowOther != "") {
+                $('#history_list_other').append(rowOther);
+                $('#history_list_other').append(clearElement);
+            } else {
+                $('#history_list_other').hide();
+                $('.history_list_title').hide();
+            }
+		}
+	}else{
+		if (!history_has_data){
+			if (tab_index == 0){
+				$("#all-history-list .all-list-header").text(LANG_text["member_history"]+" (0)");
+				$('#all-history-list .all-list-body').append('<div class="no-result">'+LANG_text["member_no_record"]+'</div>');
+			}else{
+				$('#history_list').empty().append('<div class="no-result">'+LANG_text["member_no_record"]+'</div>');
+			}
+
+		}
+		history_reach_end = true;
+	}
+
+	$('#history_list li').mouseover(function(){
+		$('#del_btn', this).show();
+	}).mouseout(function(){
+		$('#del_btn', this).hide();
+	});
+
+	$('#history_list li #del_btn').click(function(){
+		//alert($(this).attr('product_id'));
+		var li = $(this).closest('li');
+		var id = $(this).attr('product_id');
+		var data = JSON.stringify({user_id:user_id, id:id, platform_flag_label:'web'});
+		var api = api_url+'user/history'+web_api_tail;
+		$.ajax({
+			url: api,
+			type: 'DELETE',
+			contentType: 'text/plain; charset=utf-8',
+			dataType: 'json',
+			data: data,
+			success: function(json){
+				li.fadeOut().remove();
+				if ($('#history_list li').length == 0){
+					$('#history_list').empty().append('<div class="no-result">'+LANG_text["member_no_record"]+'</div>');
+				}
+			}
+		});
+	});
+
+	loading[tab_id] = false;
+	$('.loading').hide();
+
+
+	positionFooter();
+	initImgs();
+	//resizeFooter();
+}
+
+//common
+function eventTracking(type, id){
+	switch(type) {
+	    case "notificationClick":
+			tracking.facade.event_notificationClick(
+				window.tracking.screen.MEMBER_CENTER,
+				id,
+				null
+			);
+	        break;
+	}
+}
+
+function initImgs(){
+	$('li.grid').on('mouseenter', function(){
+		var grid = $(this);
+		grid.addClass('mouseenter');
+	});
+
+	$('li.grid').on('mouseleave', function(){
+		$(this).removeClass('mouseenter');
+		$('.product-tip', this).remove();
+	});
+
+	$('li.grid img').error(function(){
+		$(this).remove();
+	})
+}
+
+//begin adapterForBillHistory
+function adapterForBillHistory(data) {
+    // 参考 https://docs.google.com/spreadsheets/d/1z57wX8CAiB9oIP5Pc8vT1HehDBQjKFmUluYzsWO9FDU/edit#gid=624767945
+    var new_data = paymentDataTransaction(data.subscription, true);
+    new_data.history_total_count = data.payments.length;
+    new_data.history = [];
+    for (var i = 0; i <= data.payments.length - 1; i++) {
+        new_data.history.push(paymentDataTransaction(data.payments[i], false));
+    }
+    return new_data;
+}
+
+function paymentDataTransaction(data, is_active) {
+    var new_data = {
+        billing_date: "",//1629700833
+        next_billing_date: "",//1637476833
+        card_number: "",//
+        email: "",//
+        event_name: "",//
+        expire_date: "",//1637476833
+        merchant_ref: "",//
+        order_code: "",//863629700831555G
+        order_id: "",
+        payment_ref: "",//
+        period_number: "",
+        period_type: "",
+        phone_number: "",
+        plan_name: "",
+        redemption_code: "",
+    }
+    data.provider = data.provider ? data.provider : '';
+    new_data.plan_name = planNameTranslation(data.provider);
+    if (is_active) {
+        new_data.billing_date = data.subscription_start_time ? Date.parse(parseDate(data.subscription_start_time)) / 1000 : '';
+        new_data.next_billing_date = data.next_recurring_time ? Date.parse(parseDate(data.next_recurring_time)) / 1000 : '';
+        new_data.expire_date = data.subscription_end_time ? Date.parse(parseDate(data.subscription_end_time)) / 1000 : '';
+        if(data.payments[0]){
+            if(data.payments[0].extra_info){
+                new_data.event_name = data.payments[0].extra_info.event_name;
+            }
+            data = data.payments[0];
+        }
+    }else {
+        new_data.billing_date = data.payment_time ? Date.parse(parseDate(data.payment_time)) / 1000 : '';
+        new_data.expire_date = '';//新的没有支付方式有这个
+    }
+    data.uuid = data.uuid ? data.uuid : '';
+    var uuid_arr = data.uuid.split('-');
+    var uuid_real = data.uuid;
+    if (uuid_arr.length >= 3) {
+        uuid_real= uuid_arr[1];
+    }
+    new_data.email = data.uuid //显示api的原输出
+    if (new_data.plan_name.indexOf("ais") != -1) {
+        //data.uuid = data.uuid.replace('AIS-PLAY-BOX', 'AIS_PLAY_BOX'); //AIS-PLAY_BOX-66924346590-40
+        new_data.order_code = data.transaction_id
+    }
+    if (new_data.plan_name == 'credit_card') {
+        new_data.order_code = data.partner_transaction_id
+    }
+    if(new_data.plan_name=='ios_iap'){
+        new_data.order_id = data.partner_transaction_id
+    }
+    if(new_data.plan_name == 'redemption'){
+        new_data.period_number = data.extra_info ? data.extra_info.period_number : "";
+        new_data.period_type = data.extra_info ? data.extra_info.period_type : "";
+    }
+    if(new_data.plan_name =='ais month'){
+        new_data.phone_number = data.uuid //需要完整的的，来判断是否请求其他接口
+    }else {
+        new_data.phone_number = data.uuid //显示api的原输出
+    }
+    new_data.redemption_code = data.partner_transaction_id  //redemption 是 partner_transaction_id
+    return new_data;
+}
+
+function planNameTranslation(billPlanName) {
+    billPlanName = billPlanName.toUpperCase();
+    switch (billPlanName) {
+        case 'NOWTVAEP':
+            billPlanName = 'aep';
+            break;
+        case 'APPLE_IAP':
+            billPlanName = 'ios_iap';
+            break;
+        case 'GOOGLE_IAP':
+            billPlanName = 'android_iap';
+            break;
+        case 'SUN':
+            billPlanName = 'sun_mobile';
+            break;
+        case 'RDS':
+            billPlanName = 'redemption';
+            break;
+        case 'ais':
+        case 'AIS':
+        case 'AIS_PLAY_BOX':// 统称
+            billPlanName = 'ais month';
+            break;
+        case 'TREU':
+            billPlanName = 'true month';
+            break;
+        case 'ADY-CC':
+            billPlanName = 'credit_card';
+            break;
+        case 'M1'://不区分  sg m1 和 sg starhub  统一使用 m1
+            billPlanName = 'sg m1';
+            break;
+        default:
+            break;
+    }
+    return billPlanName.toLowerCase()
+}
+
+//end adapterForBillHistory

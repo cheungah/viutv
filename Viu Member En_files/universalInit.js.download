@@ -1,0 +1,244 @@
+function UniversalInit(){
+    var _this = this;
+    var token_lang = {
+        "1": "zh",
+        "2": "zh",
+        "3": "en",
+        "4": "th",
+        "5": "my",
+        "6": "ar",
+        "7": "ms",
+        "8": "id"
+    };
+
+    _this.init = function() {
+        _this.endpoint = region.universal_api_endpoint;
+        _this.uuid = Cookies.get("_ottUID");
+        _this.language = token_lang[global_lang_id];
+        _this.countryCode;
+        _this.platform = "browser";
+        _this.platformFlagLabel = "web";
+        _this.token = Cookies.get("token");
+        _this.app_token = Cookies.get("app_token");
+        _this.carrier;
+        _this.msisdn = "";
+        _this.htxnid = "";
+        _this.offer;
+        _this.identity= "";
+
+        _this.configCall();
+    };
+
+    _this.configCall = function() {
+        $.ajax({
+            url: _this.endpoint + "config",
+            type: "GET",
+            async: false,
+            headers: {
+                'Platform': _this.platform,
+                // 'x-viu-ip': 183.171.81.112
+            },
+            success: function (response) {
+                // vuclip testing
+                _this.countryCode = response.countryCode;
+                // _this.countryCode = "my";
+
+                if (response.carrier != undefined) {
+                    _this.carrier = response.carrier;
+                }
+                
+                if (response.carrier != undefined && response.carrier.msisdnDirectUrl != null) {
+                    _this.headerEnrichmentCall(response.carrier.msisdnDirectUrl);
+                }else{
+                    _this.tokenCall();
+                }
+            }
+        });
+    };
+
+    _this.headerEnrichmentCall = function(url) {
+        $.ajax({
+            url: url,
+            type: "GET",
+            async: false,
+            success: function (response) {
+                _this.msisdn = $(response).find('uinfo').find('msisdn').text();
+                _this.htxnid = $(response).find('uinfo').find('htxnid').text();
+
+                _this.tokenCall();
+            }
+        });
+    };
+
+    _this.tokenCall = function() {
+        var headers = _this.getTokenHeader();
+        var data = {
+            "countryCode": _this.countryCode,
+            "platform": _this.platform,
+            "platformFlagLabel": _this.platformFlagLabel,
+            "language": _this.language,
+            "uuid": _this.uuid
+        };
+
+        if (_this.msisdn != undefined && _this.msisdn != "") {
+            data["msisdn"] = _this.msisdn;
+        }
+
+        if (_this.htxnid != undefined && _this.htxnid != "") {
+            data["htxnid"] = _this.htxnid;
+        }
+
+        var userId = "";
+        var accountId = "";
+        // vuclip user login status compatibility
+        if (Cookies.get('user') != undefined) {
+            var vuclip_user_info = JSON.parse(Cookies.get('user'));
+
+            if (vuclip_user_info.userId != undefined) {
+                userId = vuclip_user_info.userId;
+            }
+
+            if (vuclip_user_info.accountId != undefined) {
+                accountId = vuclip_user_info.accountId;
+            }
+
+            data["vuclipUserId"] = userId;
+            data["accountId"] = accountId;
+        }
+
+        if (_this.carrier != undefined && _this.carrier.id != undefined) {
+            data["carrierId"] = _this.carrier.id;
+        }
+
+        if (_this.carrier != undefined && _this.carrier.name != undefined) {
+            data["carrierName"] = _this.carrier.name;
+        }
+        
+        if (region.is_vuclip_regions) {
+            data["flavour"] = global_cpreference;
+        }
+        if (_this.identity != undefined && _this.identity) {
+            data["identity"] = _this.identity;
+        }
+        var timestamp = Date.parse(new Date());
+        $.ajax({
+            url: _this.endpoint + "auth/token?v=" + timestamp,
+            type: "POST",
+            async: false,
+            headers: headers,
+            data: JSON.stringify(data),
+            success: function (response) {
+                _this.setToken(response.token);
+                _this.removeAppToken();
+
+                initSeaMod();
+                
+                setLoginFrame();
+
+                if (document.getElementById('vuclipSubscriptionFrame') != null) {
+                    setVuclipSubscriptionFrame();
+                }
+
+                _this.statusCall();
+            },
+            error: function () {
+                // api 报错，尝试刷新token
+                if (Cookies.get('get_token_error')) {
+                    // 自动刷新后进来的。
+                    Cookies.remove('get_token_error');
+                    Cookies.remove('token');
+                    console.log("get_token_error");
+                } else {
+                    // 要刷新
+                    Cookies.set('get_token_error', 1);
+                    Cookies.remove('token');
+                    window.location.reload();
+                    console.log("get_token_error");
+                }
+            }
+        });
+    };
+
+    _this.statusCall = function() {
+        var timestamp = Date.parse(new Date());
+        $.ajax({
+            url: _this.endpoint + "subscription/status?v=" + timestamp,
+            type: "GET",
+            async: false,
+            headers: {
+                'Authorization': 'Bearer ' + _this.token,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            success: function (response) {
+
+                if (response.token !== undefined && response.token != Cookies.get('token')) {    //auto activate case
+                    _this.setToken(response.token);
+                    window.location.reload();
+                } else {
+                    if (response.token !== undefined) {
+                        _this.setToken(response.token);
+                    }
+
+                    if (response.hasSubscription !== null && response.hasSubscription !== undefined && response.hasSubscription) {
+                        // loginWithIdentity(response.identity, "");
+                    }else {
+                        if (response.offer !== null && response.offer !== undefined && response.offer.id !== undefined) {
+                            _this.offer = response.offer;
+    
+                            setVuclipOfferFrame();
+                        }
+                    }
+                }
+            }
+        });
+    };
+
+    _this.setToken = function(token) {
+        _this.token = token;
+        Cookies.set('token', _this.token, {expires: 365});
+    }
+    _this.removeAppToken = function () {
+        if (_this.app_token) {
+            //删除 app_token,只用一次
+            _this.app_token = undefined;
+            Cookies.remove('app_token');
+        }
+    }
+
+    _this.getTokenHeader = function () {
+        var header_data = {};
+        if (_this.app_token) {
+            //优先使用 app_token 用后要删除掉
+            header_data = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-App-To-Web-Token': _this.app_token,
+            };
+        } else if (_this.token) {
+            header_data = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + _this.token,
+            };
+        } else {
+            header_data = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            };
+            _this.identity = Cookies.get("identity");
+        }
+        return header_data;
+    }
+
+    $(function () {
+        var myVar = setInterval(function () {
+            if (typeof Cookies.get("_ottUID") != "undefined") {
+                _this.init();
+                clearInterval(myVar);
+            }
+        }, 300);
+    });
+}
+
+var universal = new UniversalInit;

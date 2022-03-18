@@ -1,0 +1,461 @@
+var googleOneTapSkippedReason;
+var ulUrl = region.universal_login_endpoint + '/';
+
+function setLoginFrame(postData = null, path = null) {
+	googleOneTapSkippedReason = undefined;
+	function showLoginFrame(){
+		var message = JSON.stringify({
+			callback: 'passInitialValue',
+			token: universal.token,
+			postData: postData,
+			original_url: window.location.href,
+			platform: universal.platform,
+			country: global_area_code,
+			lang: global_vuclip_lang 
+		});
+		document.getElementById('loginFrame').contentWindow.postMessage(message, region.universal_login_endpoint);
+		$("#loginFrame").show();
+	};
+
+	if (path) {
+		ulUrl += path;
+	}
+    $('#loginFrame').hide();
+	document.getElementById('loginFrame').contentWindow.location.replace(ulUrl);
+    if (jQuery.fn.jquery && jQuery.fn.jquery > '3') {
+		$('#loginFrame').on('load', showLoginFrame);
+	} else {
+		$("#loginFrame").load(showLoginFrame);
+	}
+}
+
+function openLoginFrame(callback) {
+    var postData = null,
+        path = '';
+    if (callback) {
+        if (callback.postData) {
+            postData = callback.postData;
+        }
+        if (callback.path) {
+            path = callback.path;
+        }
+    }
+    setLoginFrame(postData, path);
+    $('body').addClass('float-hidden');
+    $('#iframe_dialog .dialog-close').on('click', function () {
+        closeLoginFrame();
+    });
+
+    $('#iframe_dialog').show();
+
+    resizeLoginFrame($('#iframe_dialog .dialog').height());
+	$('#loginFrame').ready(() => {
+		var message = JSON.stringify({callback: 'displayUniversalLogin'});
+		document.getElementById('loginFrame').contentWindow.postMessage(message, region.universal_login_endpoint);
+	});
+}
+var singtelLoginIframe = null;
+function openSingtelLoginPage(loginUrl, returnUrl) {
+    var popup_width = 600;
+    var popup_height = 650;
+    var left = window.top.outerWidth / 2 + window.top.screenX - popup_width / 2;
+    var top = window.top.outerHeight / 2 + window.top.screenY - popup_height / 2;
+	var st_login_base = loginUrl;
+    var st_login_return = returnUrl;
+
+    var st_login_url = st_login_base + '?return_url=' + st_login_return;
+    singtelLoginIframe = window.open(
+        st_login_url,
+        'Singtel Login',
+        'width=' + popup_width + ',height=' + popup_height + ',toolbar=1, top=' + top + ', left=' + left
+    );
+}
+function singtelLoginCallback(callbackData) {
+    if (singtelLoginIframe) {
+        singtelLoginIframe.close();
+    }
+    if (callbackData.status) {
+        //login success
+        if (callbackData.action === 'SINGTEL_REGISTER') {
+            openLoginFrame({
+                path: 'singtel-singin?email='+callbackData.email+'&jwt='+callbackData.jwt,
+            });
+        } else {
+            loginFrameCallback(callbackData);
+        }
+    } else {
+        //login failure
+        errorCallback(callbackData.title, callbackData.message);
+    }
+}
+function closeLoginFrame(){
+	$("#iframe_dialog").hide();
+	$('#iframe_dialog .dialog').css('height', ''); // reset
+	// $("#loginFrame").attr({'src': $("#loginFrame").attr('src')});
+	document.getElementById('loginFrame').contentWindow.location.replace(ulUrl);
+    $("body").removeClass("float-hidden");
+}
+
+function relocateLoginDialog(){
+	$("#iframe_dialog .dialog").css("margin-top", -($('#iframe_dialog .dialog').height()/2)+15);
+}
+
+function resizeLoginFrame(height){
+	//console.log("height: ",height);
+	var browser_height = $("#iframe_dialog").height();
+	if(browser_height < (height+50)){
+		height = browser_height-50;
+	}
+	$("#iframe_dialog .dialog").css({'height':height+'px'});
+	relocateLoginDialog();
+}
+
+function loginFrameCallback(data){
+	const identity = data.identity;
+	switch (data.action) {
+		case "register":
+        case "login":
+			if(typeof data.token !== "undefined" && data.token != ""){
+				//update user token
+				universal.setToken(data.token);
+			}
+			if(typeof identity !== "undefined" && identity != ""){
+				//loginWithIdentity(identity, "");
+				if(data.paymentForm && data.paymentForm.entryPoint){
+					loginWithIdentity(identity, "", ()=>{
+						openPaymentPage(data.paymentForm.entryPoint, data.paymentForm.postData);
+					});
+				}else if(data.promoCode){
+					loginWithIdentity(identity, "", ()=>{
+						redeemPromoCode(data.promoCode, data.token);
+					});
+				}else{
+					loginWithIdentity(identity, "");
+				}
+			}
+			break;
+	}
+}
+
+function errorCallback(title, message) {
+    switch (title) {
+        case 'tryInitAgain':
+            var initialValue = JSON.stringify({
+                callback: 'passInitialValue',
+                token: universal.token,
+                platform: universal.platform,
+                country: global_area_code,
+                lang: global_vuclip_lang,
+            });
+            document
+                .getElementById('loginFrame')
+                .contentWindow.postMessage(initialValue, region.universal_login_endpoint);
+            break;
+        default:
+            g_popup('', title, message, false, false, false, LANG_text.general_button_confirm);
+    }
+}
+
+window.addEventListener("message", (event) => {
+	// Do we trust the sender of this message?  (might be different from what we originally opened, for example).
+	if (event.origin !== region.universal_login_endpoint){
+		return;
+	}
+
+	var callbackData = JSON.parse(event.data);
+	switch (callbackData.callback) {
+		case "resizeLoginFrame":
+			resizeLoginFrame(callbackData.height);
+			break;
+		case "loginFrameCallback":
+			loginFrameCallback(callbackData);
+			break;
+		case "errorCallback":
+			errorCallback(callbackData.title, callbackData.message);
+			break;
+		case "singtelLoginCallback":
+			singtelLoginCallback(callbackData);
+			break;
+	}
+}, false);
+
+function getUrlParameter(sParam) {
+    var sPageURL = window.location.search.substring(1),
+        sURLVariables = sPageURL.split('&'),
+        sParameterName,
+        i;
+
+    for (i = 0; i < sURLVariables.length; i++) {
+        sParameterName = sURLVariables[i].split('=');
+
+        if (sParameterName[0] === sParam) {
+            return typeof sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
+        }
+    }
+    return false;
+};
+
+function initGoogleOneTap(googleClintId) {
+	google.accounts.id.initialize({
+		client_id: googleClintId || '536498414511-udqe4ett41pqk4h0kgbjl4hog1t2878e.apps.googleusercontent.com',
+		callback: googleOneTapCallback,
+		cancel_on_tap_outside: false,
+	});
+}
+
+function promptGoogleOneTap() {
+	clearGState();
+	google.accounts.id.prompt((notification) => {
+		if (notification.isSkippedMoment()) {
+			googleOneTapSkippedReason = notification.getSkippedReason();
+			if (googleOneTapSkippedReason === 'user_cancel') {
+				googleOneTapDataTracking('cancel');
+			}
+			console.log(`google one tap skip reason: ${googleOneTapSkippedReason}`);
+		} else if (notification.isNotDisplayed()) {
+			console.log(`google one tap not display reason: ${notification.getNotDisplayedReason()}`);
+		} else if (notification.isDisplayed()) {
+			googleOneTapDataTracking('display');
+		}
+	  });
+}
+
+function googleOneTapCallback(params) {
+	var decoded = jwt_decode(params.credential);
+	var token = getCookie('token');
+	var payload = {
+		provider: 'google',
+		userId: decoded.sub,
+		email: decoded.email,
+		name: decoded.name,
+		idToken: params.credential,
+	}
+	var isLoginStr = 'login';
+	var validateAccountEndpoint = region.universal_api_endpoint + "account/validate";
+	var loginEndpoint = region.universal_api_endpoint + "auth/login";
+	$.ajax({
+		url: validateAccountEndpoint,
+		type: 'POST',
+		dataType: 'json',
+		data: {provider: 'google', principal: payload.idToken},
+		headers: {
+			'Authorization': 'Bearer ' + token,
+		},
+		success: function (res) {
+			if (!res.haveBeenLoggedIn || !res.exists) {
+				isLoginStr = 'registration';
+			}
+			googleOneTapDataTracking(isLoginStr);
+		},
+		error: function(jqXHR) {
+			var error = jqXHR.responseJSON.error;
+			console.log(`status code: ${jqXHR.status}, internal code: ${error.code}, message: ${error.message}`);
+			errorCallback(LANG_text['redeem error code invalid retry'], '')
+		},
+		complete: function(data) {
+			$.ajax({
+				url: loginEndpoint,
+				type: 'POST',
+				dataType: 'json',
+				data: payload,
+				headers: {
+					'Authorization': 'Bearer ' + token,
+				},
+				success: function (res) {
+					var loginMessage ={
+						action: 'login',
+						identity: res.identity,
+						mcToken: (res.mc && res.mc.accessToken) ? res.mc.accessToken : null,
+						mcLocale: (res.mc && res.mc.locale) ? res.mc.locale : null,
+					};
+					if (res.token) {
+						loginMessage.token = res.token;
+					}
+					googleOneTapDataTracking(isLoginStr + 'Successful', res);
+					loginFrameCallback(loginMessage);
+				},
+				error: function(jqXHR) {
+					var error = jqXHR.responseJSON.error;
+					console.log(`status code: ${jqXHR.status}, internal code: ${error.code}, message: ${error.message}`);
+					errorCallback(LANG_text['redeem error code invalid retry'], '')
+				}
+			});
+		}
+	});
+}
+
+function userClickedOutside() {
+	return googleOneTapSkippedReason === 'tap_outside';
+}
+
+function userDismissedOneTap() {
+	return googleOneTapSkippedReason === 'user_cancel';
+}
+
+function isGoogleOneTapPrompted() {
+	return !!getCookie('g_state');
+}
+
+function isUserLogin() {
+	return !!getCookie('identity');
+}
+
+function clearGState() {
+	// g_state example: g_state	{"i_l":1,"i_p":1629283679427}
+	if (getCookie('g_state')) {
+		var expires = "expires=Thu, 01 Jan 1970 00:00:00 UTC";
+        document.cookie = `g_state=; ${expires}; path=/`;
+	}
+}
+
+function getCookie(name) {
+    var nameEQ = name + "=";
+    var ca = document.cookie.split(';');
+    for(var i=0;i < ca.length;i++) {
+        var c = ca[i];
+        while (c.charAt(0)==' ') c = c.substring(1,c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+    }
+    return null;
+}
+
+function googleOneTapDataTracking(type, apiResponse) {
+	var commonGlobalDimensions = {
+		user_type: getCookie('identity') ? getCookie('user_type') : '0',
+		user_id: getCookie('identity'),
+		account_type: getCookie('account_type'),
+		platform: getCookie('platform'),
+		app_session_id: getCookie('_ottAID'),
+		device_id: getCookie('_ottUID'),
+		page_url: window.location.href,
+		app_language: window.global_url_code.replace('-', '_'),
+		user_agent: navigator.userAgent,
+	};
+	var data = {
+		"event": "GA_EVENT",
+		"screenName": window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME),
+		"screenMetadata": window.tracking.TrackingUtils.getDimension(window.tracking.dimension.SCREEN_METADATA),
+		...commonGlobalDimensions,
+	};
+	switch (type) {
+		case 'login':
+			data = {
+				...data,
+				"event_category": "Universal Login",
+				"event_action": "Log In Methods",
+				"event_label": "Google One Tap",
+				"non_interactive": "false",
+			}
+			window.tracking.facade.event_googleOneTapLogin(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME),
+				"Log In Methods"
+			);
+			break;
+		case 'loginSuccessful':
+			data = {
+				...data,
+				"event_category": "Universal Login",
+				"event_action": "Log In Successful",
+				"event_label": "Google One Tap",
+				"non_interactive": "false",
+				user_type: ''+apiResponse.user.type,
+				user_id: apiResponse.user.userId,
+				account_type: ''+apiResponse.user.accountType,
+			}
+			window.tracking.facade.event_googleOneTapLogin(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME),
+				"Log In Successful",
+				''+apiResponse.user.type,
+				''+apiResponse.user.userId,
+			);
+			break;
+		case 'registration':
+			data = {
+				...data,
+				"event_category": "Universal Login",
+				"event_action": "Registration Methods",
+				"event_label": "Google One Tap",
+				"non_interactive": "false",
+			}
+			window.tracking.facade.event_googleOneTapLogin(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME),
+				"Registration Methods"
+			);
+			break;
+		case 'registrationSuccessful':
+			data = {
+				...data,
+				"event_category": "Universal Login",
+				"event_action": "Registration Successful",
+				"event_label": "Google One Tap",
+				"non_interactive": "false",
+				user_type: ''+apiResponse.user.type,
+				user_id: apiResponse.user.userId,
+				account_type: ''+apiResponse.user.accountType,
+			}
+			window.tracking.facade.event_googleOneTapLogin(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME),
+				"Registration Successful",
+				''+apiResponse.user.type,
+				''+apiResponse.user.userId,
+			);
+			break;
+		case 'display':
+			data = {
+				...data,
+				"event_category": "Google One Tap",
+				"event_action": "Popup Showed",
+				"event_label": "",
+				"non_interactive": "true",
+			}
+			window.tracking.facade.event_googleOneTapDisplay(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME)
+			);
+			break;
+		case 'cancel':
+			data = {
+				...data,
+				"event_category": "Google One Tap",
+				"event_action": "Popup Closed",
+				"event_label": "user_cancel",
+				"non_interactive": "false",
+			}
+			window.tracking.facade.event_googleOneTapCancel(
+				window.tracking.TrackingUtils.getDimension(window.tracking.globalDimension.SCREEN_NAME)
+			);
+			break;
+		default:
+			break;
+	}
+	
+	window.dataLayer.push(data);
+}
+
+function onAcceptPromotionalMessage() {
+	if (!isUserLogin()) {
+		openLoginFrame();
+	} else {
+		var identity = getCookie('identity');
+		var token = getCookie('token');
+		var updatePrivacyEndPoint = "user/privacy"
+		var api = region.universal_api_endpoint + updatePrivacyEndPoint;
+		$.ajax({
+			url: api,
+			type: 'POST',
+			dataType: 'json',
+			data: {
+				authPrivacy: true
+			},
+			headers: {
+				'Authorization': 'Bearer ' + token,
+			},
+			success: function (res) {
+				console.log(`Update authPrivacy status: ${res.status}`);
+			},
+			error: function(jqXHR) {
+				var error = jqXHR.responseJSON.error;
+				console.log(`status code: ${jqXHR.status}, internal code: ${error.code}, message: ${error.message}`);
+			}
+		});
+	}
+}
