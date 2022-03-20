@@ -1,0 +1,24 @@
+function initSeaMod(){
+	var v = global_update_time_stamp;
+	seajs.config({
+			base: "/ott/"+global_area_code+"/v1/js/sea-modules/",
+			alias: {
+				"header": "/ott/" + global_area_code + "/v1/js/sea-modules/header.js?v=" + v,
+				"user": "/ott/" + global_area_code + "/v1/js/sea-modules/user.js?v=" + v,
+				"entry_user": "/ott/" + global_area_code + "/v1/js/sea-modules/entry_user.js?v=" + v,
+				"entry_index": "/ott/" + global_area_code + "/v1/js/sea-modules/entry_index.js?v=" + v,
+				"entry_live": "/ott/" + global_area_code + "/v1/js/sea-modules/entry_live.js?v=" + v,
+				// "jquery": "//code.jquery.com/jquery-1.11.2.min.js",
+				"_": "/ott/" + global_area_code + "/v1/js/components/underscore/underscore.js?v=" + v,
+				// "lazy": "/ott/"+global_area_code+"/v1/js/jquery.lazyload.min.js"
+				//"cropper": "//cdnjs.cloudflare.com/ajax/libs/cropper/0.10.1/cropper.min.js",
+				//"slider": "//code.jquery.com/ui/1.11.4/jquery-ui.min.js"
+				//"slider": "../jquery-ui.min.js"
+			}
+	});
+
+	seaModEntryUser();
+	if(page_name == "home"){
+		seaModEntryIndex();
+	}
+}
