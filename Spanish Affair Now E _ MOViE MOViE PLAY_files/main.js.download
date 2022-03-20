@@ -1,0 +1,1098 @@
+$(function(){
+	// logout
+	$('.logout').on('click', function (e) {
+		if (navClick){
+			logout(true);
+		}
+	});
+
+	// default search keyword
+	//if (!Cookies.get("default_keyword")){
+		//var default_keyword_api = api_cross_domain+encodeURIComponent(api_app_url+"search-setting/default-keyword"+web_api_tail);
+		//var default_keyword_api = api_app_url+"search-setting/default-keyword"+web_api_tail;
+		var default_keyword_api = region.universal_api_endpoint+"mobile?r=/search-setting/default-keyword"+web_api_tail;
+
+	    $.ajax({
+	        url: default_keyword_api,
+	        type: 'get',
+	        dataType: 'json',
+	        beforeSend: function(xhr) {
+		        xhr.setRequestHeader("X-Forwarded-For", region.ip);
+		    },
+	        success: function(json){
+	        	default_keyword = "";
+	        	if (json.status.code == 0 && json.data){
+	        		if (json.data.search_setting && json.data.search_setting.default_keyword){
+	        			default_keyword = json.data.search_setting.default_keyword;
+	        		}
+	        	}
+	        	Cookies.set("default_keyword", default_keyword);
+	        	replace_keyword();
+	        }
+	    });
+/*	}else{
+		replace_keyword();
+	}*/
+
+
+	// important notice
+	function popupImportant(){
+		g_popup("important_notice", LANG_text["important_notice_title"], LANG_text["important_notice_description"], false, false, false, LANG_text["important_notice_button"]);
+	}
+	// $("#important-notice-btn").on('click', function(){
+	// 	popupImportant();
+	// });
+	// if(!Cookies.get("privacy_change_20190912")){
+	// 	Cookies.set("privacy_change_20190912", true, { expires: 365 });
+	// 	popupImportant();
+	// }
+
+
+	// Top 10 for SEO
+	$(".grid_scroll .item_name a").each(function( index ) {
+		var item_name = $(this).text();
+		if(item_name.length > 28){
+			$(this).html(item_name.substring(0, 28)+"...");
+		}
+	});
+	$(".grid_scroll").each(function( index ){
+		$(this).siblings(".roll-lbtn").on('click', function(){
+			var $prevBtn = $(this);
+	        var $nextBtn = $(this).siblings(".roll-rbtn");
+			$prevBtn.hide();
+	        $nextBtn.hide();
+
+			var $grid = $(this).parents('.grid');
+	        var $scroller = $grid.find('.grid_scroll');
+	        var $item = $grid.find('.item');
+
+	        var scrollLeft = $scroller.position().left;
+	        var gridWidth = $grid.find('.grid_scroller_outer').width();
+	        var itemWidth = $grid.find(".item:nth-child(2)").position().left;
+
+	        var totalItemPerPage = Math.ceil(gridWidth/itemWidth)-1;
+	        var totalPage = Math.ceil($item.length/totalItemPerPage);
+	        var totalWidthPerPage = itemWidth*totalItemPerPage;
+	        var currentPage = -(scrollLeft/totalWidthPerPage)+1;
+	        var prevPage = currentPage-1;
+
+			$scroller.animate({
+	            'left': -((prevPage-1)*totalWidthPerPage)
+	        },{
+	        	complete: function(){
+	        		if(prevPage != 1){
+						$prevBtn.show();
+					}
+			        $nextBtn.show();
+	        	}
+	        });
+		});
+		$(this).siblings(".roll-rbtn").on('click', function(){
+			var $prevBtn = $(this).siblings(".roll-lbtn");
+	        var $nextBtn = $(this);
+	        $prevBtn.hide();
+	        $nextBtn.hide();
+
+			var $grid = $(this).parents('.grid');
+	        var $scroller = $grid.find('.grid_scroll');
+	        var $item = $grid.find('.item');
+
+	        var scrollLeft = $scroller.position().left;
+	        var gridWidth = $grid.find('.grid_scroller_outer').width();
+	        var itemWidth = $grid.find(".item:nth-child(2)").position().left;
+
+	        var totalItemPerPage = Math.ceil(gridWidth/itemWidth)-1;
+	        var totalPage = Math.ceil($item.length/totalItemPerPage);
+	        var totalWidthPerPage = itemWidth*totalItemPerPage;
+	        var currentPage = -(scrollLeft/totalWidthPerPage)+1;
+	        var nextPage = currentPage+1;
+
+			$scroller.animate({
+	            'left': -((nextPage-1)*totalWidthPerPage)
+	        },{
+	        	complete: function(){
+	        		if(currentPage != totalPage-1){
+						$nextBtn.show();
+					}
+			        $prevBtn.show();
+	        	}
+	        });
+		});
+
+		var $grid = $(this).parents('.grid');
+        var $scroller = $grid.find('.grid_scroll');
+        var $item = $grid.find('.item');
+
+        var scrollLeft = $scroller.position().left;
+        var gridWidth = $grid.find('.grid_scroller_outer').width();
+        var itemWidth = $grid.find(".item:nth-child(2)").position().left;
+
+        var totalItemPerPage = Math.ceil(gridWidth/itemWidth)-1;
+        var totalPage = Math.ceil($item.length/totalItemPerPage);
+        if(totalPage > 1){
+        	$(this).siblings(".roll-rbtn").show();
+        }
+	});
+
+	// VWO
+	$("#navIconLanguage").on('click', function(){
+		for (var i in region.languages) {
+			if (region.languages[i] != global_lang_id) {
+				var language_id = region.languages[i];
+			}
+		}
+
+		langSwitcher(language_id);
+	});
+	$("#navIconHistory").on('click', function(){
+		if(window.user){
+			window.location.href="/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/member/record";
+		}else{
+			$("#guest-login-btn").click();
+			$(".login_and_register_dialog .reg-intro").html(LANG_text["nav_icon_message"]);
+		}
+	});
+	$("#navIconBookmark").on('click', function(){
+		if(window.user){
+			window.location.href="/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/member/favorite";
+		}else{
+			$("#guest-login-btn").click();
+			$(".login_and_register_dialog .reg-intro").html(LANG_text["nav_icon_message"]);
+		}
+	});
+	$("#navIconSearch").on('click', function(){
+		$("#navIconLanguage").hide();
+		$("#navIconHistory").hide();
+		$("#navIconBookmark").hide();
+		$("#navIconSearch").hide();
+		$(".v-search").stop().fadeIn(function(){
+			$("#search_input").focus();
+		});
+	});
+	$("#search_input").focusout(function(){
+		$("#navIconLanguage").show();
+		$("#navIconHistory").show();
+		$("#navIconBookmark").show();
+		$("#navIconSearch").show();
+		$(".v-search").stop().fadeOut();
+	});
+
+	if(region.is_vuclip_regions){
+		var cur_url = location.href;
+		
+		if ((cur_url.indexOf("favorite") != -1 && !localStorage.getItem("bookmark_ack_card_flag") == 1) || (cur_url.indexOf("record") != -1  && !localStorage.getItem("history_ack_card_flag") == 1)) {
+			if (cur_url.indexOf("favorite") != -1) {
+				$("#ack_card .ack_card_content").html(LANG_text['bookmark_ack_card_content']);
+			}else if (cur_url.indexOf("record") != -1) {
+				$("#ack_card .ack_card_content").html(LANG_text['history_ack_card_content']);
+			}
+			$(".ack_card_warp").show();
+		}
+		
+		$("#ack_card_accept_btn").html(LANG_text['ack_card_confirm']).on('click', function(){
+			$(".ack_card_warp").slideToggle("slow");
+
+			if (cur_url.indexOf("favorite") != -1) {
+				localStorage.setItem("bookmark_ack_card_flag", 1);
+			}else if (cur_url.indexOf("record") != -1) {
+				localStorage.setItem("history_ack_card_flag", 1);
+			}
+		});
+	}
+
+	if(region.components.header.cookies_consent){
+		if (Cookies.get('cookie_consent_accept') != "true") {
+			if (md.mobile()) {
+				//fix vod page v-placeholder height issue
+				$(".v-placeholder").css("height", "0px");
+			}
+			var cookie_height = $("#cookie_consent_box").height()+"px";
+			
+			//fix home page grid layer height issue
+			$("#header_container").css("padding-top", cookie_height);
+			$("#cookie_consent_box").css("display", "block");
+			
+			
+			
+			$("a, span, div, img").click(function() {
+				Cookies.set("cookie_consent_accept", true, { expires: 365 });			
+				cookie_consent_box_status = "hide";
+				$("#cookie_consent_box").hide();
+				//fix home page grid layer height issue
+				$("#header_container").css("padding-top", "0px");
+				
+				if (md.mobile()) {
+					//fix home page grid layer height issue
+					$(".v-placeholder").css("height", "70px");
+				}
+			});
+  
+			$("#cookie_accept_btn").click(function() {
+				Cookies.set("cookie_consent_accept", true, { expires: 365 });
+				cookie_consent_box_status = "hide";
+				$("#cookie_consent_box").hide();
+				//fix home page grid layer height issue
+				$("#header_container").css("padding-top", "0px");
+				
+				if (md.mobile()) {
+					//fix home page grid layer height issue
+					$(".v-placeholder").css("height", "70px");
+				}
+			});
+			
+			$("#cookie_close").click(function() {
+				cookie_consent_box_status = "hide";
+				$("#cookie_consent_box").hide();
+				//fix home page grid layer height issue
+				$("#header_container").css("padding-top", "0px");
+				
+				if (md.mobile()) {
+					//fix home page grid layer height issue
+					$(".v-placeholder").css("height", "70px");
+				}
+			});
+		}
+	}
+
+	cslseamlessEncrypt();
+
+	// Audience Targeting
+	// getATRecommendation();
+
+	// ad label
+	addAdLabel();
+});
+
+// tv free trial
+function TVFreeTrialIsLogin() {
+	var user_id = Cookies.get('user_id');
+	var account_type = Cookies.get('account_type');
+	if (!user_id || account_type == "6") {
+		return false;
+	} else {
+		return true
+	}
+}
+
+function TVFreeTrialIsSameUser() {
+	var user_id = Cookies.get('user_id');
+	if (user_id != tv_user_id) {
+		return false;
+	} else {
+		return true
+	}
+}
+
+function TVFreeTrialIsFreeUser() {
+	var user_level = parseInt(Cookies.get('user_level'));
+	if (user_level < 2) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+function TVFreeTrialCurrentIsPremium() {
+	// current user is premium
+	var title = LANG_text["tv_free_trail_error_title"];
+	var description = LANG_text["tv_free_trail_error_description"];
+	var redirect_flag = false;
+	var button_text = LANG_text["tv_free_trail_error_button"];
+	//show_popup(title, description, redirect_flag, button_text, function(){});
+	g_popup("", title, description, redirect_flag, false, "", button_text, "");
+}
+
+function TVFreeTrialShowRegisterOrUpgradePage() {
+	var url = new URL(window.location.href);
+	var search_params = url.searchParams;
+	search_params.delete('action');
+	search_params.delete('vt');
+	url.search = search_params.toString();
+	var new_url = url.toString();
+
+	window.location.href = new_url;
+}
+
+function TVFreeTrialVTIsInvalid() {
+	var title = LANG_text["tv_free_trail_timeout_title"];
+	var description = LANG_text["tv_free_trail_timeout_description"];
+	var redirect_flag = false;
+	var button_text = LANG_text["tv_free_trail_timeout_button"];
+
+	//show_popup(title, description, redirect_flag, button_text, function(){});
+	g_popup("", title, description, redirect_flag, false, "", button_text, "");
+}
+
+function tryLoginWithTvUser() {
+	if (TVFreeTrialIsLogin()) {
+		if (TVFreeTrialIsSameUser()) {
+			TVFreeTrialShowRegisterOrUpgradePage()
+		} else if (TVFreeTrialIsFreeUser()) {
+			showSwitchAccount();
+		} else {
+			TVFreeTrialCurrentIsPremium();
+		}
+	} else {
+		loginWithTvUser()
+	}
+}
+
+function loginWithTvUser() {
+	var data = {
+		"provider": "verificationToken",
+		"verificationToken": vt
+	};
+	$.ajax({
+		url: region.universal_api_endpoint + "auth/login",
+		type: "POST",
+		headers: {
+			'Authorization': 'Bearer ' + Cookies.get("token"),
+			'Accept': 'application/json',
+			'Content-Type': 'application/json',//必须加，不然后端接不到参数
+		},
+		data: JSON.stringify(data),
+		success: function (msg) {
+			console.log(msg);
+			if (msg.status == 1) {
+				var tv_user = msg.user;
+				//login tv user
+				// localStorage.setItem("access_token", msg.mc.accessToken);
+				Cookies.set("access_token", msg.mc.accessToken);
+				Cookies.set("token", msg.token);
+				TVFreeTrialShowRegisterOrUpgradePage();
+			} else {
+				// vt is invalid
+				TVFreeTrialVTIsInvalid()
+			}
+		},
+		error: function (xhr, textStatus, errorThrown) {
+			console.log(xhr);
+			if (xhr.status == 401) {
+				// vt is invalid
+				TVFreeTrialVTIsInvalid()
+			} else {
+				// 调用外部的error
+				var description = LANG_text["error_system_error"];
+				var button_text = LANG_text["close"];
+				g_popup("", "", description, false, false, "", button_text, "");
+			}
+		}
+	});
+}
+//end tv free trial
+
+var encrypted_data = "";
+
+function loginWithIdentity(identity, redirect_url, callback = false){
+	if (identity != null && identity != "" && identity) {
+		var data = {
+			'identity': identity,
+			'platform_flag_label': 'web'
+		};
+
+		$.ajax({
+			type: 'POST',
+			url: web_api_url+'user/login',
+			data: JSON.stringify(data),
+			success:function(response){
+				response = JSON.parse(response);
+
+				// login tracking
+				window.tracking.Tracker.globalParamters.addDimension(
+					tracking.dimension.LOGIN_METHOD,
+					"Identity"
+				);
+
+				if (response.status.code === 0) { // login successfully
+					var user_data = response.data.user;
+					Cookies.set('user_id', user_data.user_id);
+					Cookies.set('username', user_data.username);
+					Cookies.set('nickname', user_data.nickname);
+					Cookies.set('account_type', user_data.account_type);
+
+					// make sure to show the correct copy for each user level
+					if(user_data.operators){
+						if(region.max_level == 3){
+							if(user_data.user_level == 3){
+								$("#menu_p_upgrade").remove();
+								$("#menu_p_free").remove();
+							}else{
+								$("#menu_p_max").remove();
+								$("#menu_p_free").remove();
+							}
+						}else{
+							$("#menu_p_upgrade").remove();
+							$("#menu_p_free").remove();
+						}
+					}else{
+						$("#menu_p_upgrade").remove();
+						$("#menu_p_max").remove();
+					}
+// remove set-operators-device
+						$.ajax({
+							url: web_api_url+'user/info'
+						}).done(function (response) {
+							var infoResponse = JSON.parse(response);
+							if (infoResponse.status.code === 0 && infoResponse.data.user.user_id != null) {
+								var user_data = infoResponse.data.user;
+
+								Cookies.set('user_level', user_data.user_level);
+								Cookies.set('has_free_trial', user_data.has_free_trial);
+
+								if (user_data.operators){
+									Cookies.set('operators_flag_id', user_data.operators.operators_flag_id);
+
+									if (user_data.operators.body != "null"){ // VIP member
+										$("body").addClass("vip");
+									}
+
+									window.tracking.Tracker.globalParamters.addDimension(
+										tracking.globalDimension.USER_SUBSCRIPTION_SOURCE,
+										user_data.operators.label
+									)
+								}
+							}
+
+							closeLoginFrame();
+
+							if(callback){
+								callback();
+							}
+
+							Cookies.remove("pdpa_consent_accept");
+
+							if (goUpgrade){
+								g_popup("goupgrade", "Go Upgrade", "Now go upgrade", false, true, "Later", "Confirm");
+							}else if (goPremium){
+								if(user_data.user_level < 2){
+									var p_and_pplus_url = "/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/premium/";
+									var win = window.open(p_and_pplus_url, '_blank');
+								}
+								memberLoginReload();
+							}else if (goPremiumPlus){
+								if(user_data.user_level < 3){
+									var pplus_only_url = "/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/premium/?page_option=pplus_plan_all";
+									var win = window.open(pplus_only_url, '_blank');
+								}
+								memberLoginReload();
+							}else if (goRedeem){
+								var $el = $('.v-topnav .v-user').hide().filter('.user-logged-on').show();
+								if　(user_data.account_type == "1"){ // email login
+									if (user_data.head_portrait_radius_url){
+										$el.find('#header_profile_pic').attr('src', user_data.head_portrait_radius_url);
+									}else{
+										$el.find('#header_profile_pic').attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+									}
+								}else if　(user_data.account_type == "2"){ // facebook login
+									if (user_data.head_portrait_radius_url){
+										$el.find('#header_profile_pic').attr('src', user_data.head_portrait_radius_url);
+									}else{
+										$el.find('#header_profile_pic').attr('src', 'http://graph.facebook.com/'+window.user.social_account_id+'/picture?type=square');
+									}
+								}
+								$el.find('#header_profile_pic').error(function(){
+									$el.find('#header_profile_pic').attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+								})
+								$('.user-menu dt').html(user_data.nickname);
+								$el.find('i').html('').hide();
+								$el.show();
+								redeemAction();
+							}else if (go_credit_card) {
+								get_upgrade_product(function(product_list) {
+									var eligible_flag = check_eligible(credit_card_operator_flag_id, product_list);
+
+									if (eligible_flag) {
+										credit_card_upgrade(credit_card_operator_flag_id, credit_card_product_id, credit_card_card_name, credit_card_type);
+									}else {
+										show_not_eligible_popup();
+									}
+								});
+							}else{
+								if(redirect_url != ""){
+									window.location.href = redirect_url;
+								}else{
+									memberLoginReload();
+								}
+							}
+						});
+//end remove set-operators-device
+				}
+			}
+		});
+	}
+}
+
+function logout(redirect){
+	var api = web_api_url+"user/logout";
+	$.ajax({
+		url: api,
+		type: 'GET',
+		//data: data,
+		success: function(json){
+			var cookies = document.cookie.split(";");
+			for (var i = 0; i < cookies.length; i++) {
+				var cookie = cookies[i];
+				var eqPos = cookie.indexOf("=");
+				var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+				document.cookie = name + "=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+			}
+
+			Cookies.remove('user_id');
+			Cookies.remove('username');
+			Cookies.remove('nickname');
+			Cookies.remove("default_keyword");
+			Cookies.remove("head_portrait");
+			Cookies.remove("social_account_id");
+			Cookies.remove("account_type");
+			Cookies.remove("operators");
+			Cookies.remove("operators_flag_id");
+			Cookies.remove("operators_label");
+			Cookies.remove("operators_body");
+			Cookies.remove("operators_area_id");
+			Cookies.remove("setdevice");
+			Cookies.remove('user_level');
+			Cookies.remove('has_free_trial');
+			Cookies.remove('device_ip');
+
+			window.tracking.Tracker.globalParamters.removeDimension(
+				tracking.globalDimension.USER_ID
+			)
+			window.tracking.Tracker.globalParamters.removeDimension(
+				tracking.globalDimension.USER_LEVEL
+			)
+			window.tracking.Tracker.globalParamters.removeDimension(
+				tracking.globalDimension.USER_SUBSCRIPTION_SOURCE
+			)
+
+			if (redirect == true){
+				window.location.href = location.origin+"/ott/"+global_area_code+"/"+global_url_code+global_cpreference_link+"/";
+			}else if (redirect != false){
+				window.location.href = location.origin+redirect;
+			}
+		}
+	});
+}
+
+$(window).scroll(function () {
+	$('#auto_complete_module').hide();
+});
+
+function replace_keyword(){
+	if (Cookies.get("default_keyword")){
+		var kw_placeholder = LANG_text["header_search"]+Cookies.get("default_keyword");
+	}else{
+		var kw_placeholder = LANG_text["default_search"];
+	}
+	$("#search_input").attr("placeholder", kw_placeholder);
+}
+
+function vwo_register_tracking(){
+	window._vis_opt_queue = window._vis_opt_queue || [];
+	window._vis_opt_queue.push(function() {_vis_opt_goal_conversion(200);});
+	window._vis_opt_queue.push(function() {_vis_opt_goal_conversion(201);});
+	window._vis_opt_queue.push(function() {_vis_opt_goal_conversion(202);});
+	window._vis_opt_queue.push(function() {_vis_opt_goal_conversion(203);});
+	window._vis_opt_queue.push(function() {_vis_opt_goal_conversion(204);});
+    window.VWO = window.VWO || [];
+	window.VWO.push(['track.goalConversion',32]);
+}
+
+function setUserAdTargeting(userData){
+	googletag.pubads().setTargeting("ott_user_type", ott_user_type);
+	try{
+		googletag.pubads().setTargeting("ott_age_group", userData.ott_age_group.toString());
+		googletag.pubads().setTargeting("ott_gender", userData.ott_gender.toString());
+		googletag.pubads().setTargeting("ott_income", userData.ott_income.toString());
+		googletag.pubads().setTargeting("ott_interests", userData.ott_interests);
+		googletag.pubads().setTargeting("ott_isp", userData.ott_isp);
+	}
+	catch(e){
+		googletag.pubads().setTargeting("ott_age_group", "");
+		googletag.pubads().setTargeting("ott_gender", "");
+		googletag.pubads().setTargeting("ott_income", "");
+		googletag.pubads().setTargeting("ott_interests", "");
+		googletag.pubads().setTargeting("ott_isp", "");
+	}
+}
+
+function arrayToString(arrayObj, quote, delimiter, openBracket, closeBracket){
+	var quoteText = (quote) ? "\"" : "";
+	var string = openBracket;
+	for(var key in arrayObj){
+		string += quoteText + arrayObj[key] + quoteText;
+
+		if(key != arrayObj.length-1){
+			string += delimiter;
+		}
+	}
+	string += closeBracket;
+
+	return (arrayObj.length > 0) ? string : "";
+}
+
+// Audience Targeting
+function getATProfile(){
+	var device_type_param = "?device_type=COOKIE";
+	var user_param = (Cookies.get('user_id')) ? "&user_id="+Cookies.get('user_id') : "";
+	var onboarding_date_param = (Cookies.get('onboarding_date')) ? "&onboarding_date="+Cookies.get('onboarding_date') : "";
+	var device_id = Cookies.get("_ottUID");
+	
+	var url = region.at_api.replace("{device_id}", device_id) + device_type_param + user_param + onboarding_date_param;
+
+	$.ajax({
+		type: 'GET',
+		url: url,
+		success: function(response){
+			userData = response.data.user.demo_params;
+		}
+	});
+}
+
+function setATWatchHistory(product_id, play_time){
+	var user_id = (Cookies.get('user_id')) ? Cookies.get('user_id') : "";
+	var device_id = Cookies.get("_ottUID");
+	var json_string = JSON.stringify({
+		product_id: product_id,
+		area_id: global_area_id,
+		language_id: global_lang_id,
+		platform: "web",
+		play_time: play_time,
+		user_id: user_id
+	});
+	var url = region.at_api.replace("{device_id}", device_id)+"set_watch_timeline/";
+
+	$.ajax({
+		type: 'POST',
+		url: url,
+		contentType: "application/json",
+		data: json_string,
+		success: function(response){
+			// no action
+		}
+	});
+}
+
+function getATRecommendation(callback){
+	var device_id = Cookies.get("_ottUID");
+	var page_type_param = (typeof at_page_type !== "undefined" ? "?page_type="+at_page_type : "");
+	var page_id_param = (typeof at_page_id !== "undefined" ? "&page_id="+at_page_id : "");
+	var area_id_param = "&area_id="+global_area_id;
+	var language_id_param = "&language_id="+global_lang_id;
+	var platform_param = "&platform=web";
+	var user_param = (Cookies.get('user_id')) ? "&user_id="+Cookies.get('user_id') : "";
+	var url = region.at_api.replace("{device_id}", device_id)+"recommendations/"+page_type_param+page_id_param+area_id_param+language_id_param+platform_param+user_param;
+
+	$.ajax({
+		type: 'GET',
+		url: url,
+		success: function(response){
+			callback(response);
+		},
+		error: function(){
+			var response_string = '{ "data" : { "series_prediction" : []}}';
+			var response = JSON.parse(response_string);
+			callback(response);
+		},
+		timeout: 3000
+	});
+}
+
+function cslseamlessEncrypt(){
+	var json_string = JSON.stringify({
+			platform: "web",
+			platform_flag_label: "web",
+			area_id: global_area_id,
+			language_flag_id: global_lang_id,
+			network_type: "", // not sure
+			build_number: "", // not sure
+			source: "", // AUTO or MANUAL
+			device_id: Cookies.get("_ottUID"),
+			device_model: "",
+			device_os_version: "",
+			app_session_id: "",
+			activity_session_id: "",
+			screen_session_id: "",
+			device_type: "",
+			user_id: Cookies.get("user_id"),
+			user_identity: Cookies.get("identity"),
+			user_name: Cookies.get("username"),
+			product: "subscription",
+			campaign_name: "csl_seamless"
+		});
+
+	// encrypt data for payment center
+	$.ajax({
+		type: 'POST',
+		url: "/ott/misc/webview/payment/data_encrypt.php",
+		data: {data: json_string},
+		success:function(response){
+			encrypted_data = response;
+		}
+	});
+}
+
+var csl_window = false;
+var window_url = "about:blank";
+function cslseamlessLogin(){
+	try{
+		if (playerHandler().isFullscreen()) {
+			playerHandler().toggleFullscreen();
+		}
+	}
+	catch (e) {
+
+	}
+	setTimeout(function(){
+		if(encrypted_data != ""){
+			csl_window = PopupCenter("/ott/misc/webview/payment/proxy.php?encrypted_data="+encrypted_data, "", 640, 640);
+			cslseamlessWindowCheck();
+		}
+	}, 1000);
+}
+
+function PopupCenter(url, title, w, h) {
+    // Fixes dual-screen position                         Most browsers      Firefox
+    var dualScreenLeft = window.screenLeft != undefined ? window.screenLeft : window.screenX;
+    var dualScreenTop = window.screenTop != undefined ? window.screenTop : window.screenY;
+
+    var width = window.innerWidth ? window.innerWidth : document.documentElement.clientWidth ? document.documentElement.clientWidth : screen.width;
+    var height = window.innerHeight ? window.innerHeight : document.documentElement.clientHeight ? document.documentElement.clientHeight : screen.height;
+
+    var systemZoom = width / window.screen.availWidth;
+	var left = (width - w) / 2 / systemZoom + dualScreenLeft
+	var top = (height - h) / 2 / systemZoom + dualScreenTop
+    var newWindow = window.open(url, title, 'scrollbars=yes, width=' + w / systemZoom + ', height=' + h / systemZoom + ', top=' + top + ', left=' + left);
+
+    // Puts focus on the newWindow
+    if (window.focus) newWindow.focus();
+
+    return newWindow;
+}
+
+// check for CSL Window (loop)
+function cslseamlessWindowCheck(){
+	if (!csl_window) {
+		console.log("'csl_window' has never been opened!");
+	} else {
+		if (csl_window.closed) {
+			var eventLabel = "UNKNOWN";
+			if(window_url){
+				if(window_url != "about:blank"){
+					eventLabel = "CSL_SEAMLESS_AUTO";
+				}
+			}else{
+				eventLabel = "CSL_SEAMLESS_MANUAL";
+			}
+			// GA event
+			var ga_event_config = {
+				hitType: 'event',
+				eventCategory: "Drop Off",
+				eventAction: "Close Browser",
+				eventLabel: eventLabel,
+				nonInteraction: 1
+			}
+			ga('viuWebTracker.send', ga_event_config);
+
+			cslseamlessResetWindow();
+		} else {
+			// make sure the window loaded the csl pages
+			try{
+				window_url = csl_window.location.href;
+			}
+			catch(e){
+				window_url = false;
+			}
+
+			setTimeout(function(){
+				cslseamlessWindowCheck();
+			}, 1000);
+		}
+	}
+}
+
+function cslseamlessResetWindow(){
+	csl_window = false;
+	window_url = "about:blank";
+}
+
+// for CSL Seamless callback
+function cslseamlessCallback(custom){
+	cslseamlessResetWindow();
+	var customObj = JSON.parse(custom);
+	var redirect = false; // to see redirect or not
+
+	if(customObj.status.code == 0 && typeof customObj.data.user_identity !== "undefined"){
+		// success
+		var data = {
+			'identity': customObj.data.user_identity,
+			'platform_flag_label': 'web'
+		};
+
+		$.ajax({
+			type: 'POST',
+			url: web_api_url+'user/login',
+			data: JSON.stringify(data),
+			success:function(response){
+				response = JSON.parse(response);
+
+				// login tracking
+				window.tracking.Tracker.globalParamters.addDimension(
+					tracking.dimension.LOGIN_METHOD,
+					"Identity"
+				);
+				if (response.status.code === 0) { // login successfully
+					// AMA event
+					tracking.facade.event_cslSubscriptionBinding(
+						window.tracking.screen.VIDEO_PLAYER,
+						customObj.data.channel
+					);
+
+					// GA event
+					var ga_event_config = {
+						hitType: 'event',
+						eventCategory: "Upgrade Entry",
+						eventAction: "Success Upgraded",
+						eventLabel: customObj.data.channel,
+						nonInteraction: 1
+					}
+					ga('viuWebTracker.send', ga_event_config);
+
+					redirect = window.location.href;
+
+					var user_data = response.data.user;
+					Cookies.set('user_id', user_data.user_id);
+					Cookies.set('username', user_data.username);
+					Cookies.set('nickname', user_data.nickname);
+					Cookies.set('account_type', user_data.account_type);
+
+// remove set-operators-device
+						$.ajax({
+							url: web_api_url+'user/info'
+						}).done(function (response) {
+							var infoResponse = JSON.parse(response);
+							if (infoResponse.status.code === 0 && infoResponse.data.user.user_id != null) {
+								var user_data = infoResponse.data.user;
+
+								Cookies.set('user_level', user_data.user_level);
+						        Cookies.set('has_free_trial', user_data.has_free_trial);
+
+								var email = "";
+								if (Cookies.get('account_type') == "1") {
+									email = Cookies.get('username');
+								}else if (Cookies.get('account_type') == "2" || Cookies.get('account_type') == "8") {
+									email = Cookies.get('social_account_email');
+								}
+
+								// var user_profile = {
+								// 	"Name": user_data.nickname,
+								// 	"User type": user_data.type
+								// };
+
+								var user_profile = {
+									"Identity": user_data.user_id,
+									"Device ID": Cookies.get('_ottUID'),
+									"Name": user_data.nickname,
+									"User type": user_data.type,
+									"Email": email
+								};
+
+								console.log(user_profile);
+								
+								setClevertapProfile(user_profile);
+								
+								if (user_data.operators){
+									if (user_data.operators.body != "null"){ // VIP member
+										$("body").addClass("vip");
+									}
+
+									window.tracking.Tracker.globalParamters.addDimension(
+										tracking.globalDimension.USER_SUBSCRIPTION_SOURCE,
+										user_data.operators.label
+									)
+								}
+							}
+						});
+//end remove set-operators-device
+				}
+
+				if(typeof customObj.data.title !== "undefined" || typeof customObj.data.description !== "undefined"){
+					// show popup
+					g_popup("binded_success", customObj.data.title, customObj.data.description, redirect, false, false, LANG_text.general_button_confirm);
+				}else if(redirect){
+					window.location.href = redirect;
+				}
+			}
+		});
+	}else{
+		// failed
+		if(typeof customObj.data.title !== "undefined" || typeof customObj.data.description !== "undefined"){
+			// show popup
+			g_popup("binded_fail", customObj.data.title, customObj.data.description, redirect, false, false, LANG_text.general_button_confirm);
+		}
+	}
+}
+
+function addAdLabel(){
+	if(!region.searchEngine){
+		switch(page_name){
+			case "vod":
+				$('<div class="banner_ad_label">'+LANG_text["ad_remark_text"]+'</div>').insertBefore("#div-ad-vod");
+				break;
+			case "search":
+				$('<div class="banner_ad_label">'+LANG_text["ad_remark_text"]+'</div>').insertBefore("#div-ad-search");
+				break;
+			case "celebrity":
+				$('<div class="banner_ad_label">'+LANG_text["ad_remark_text"]+'</div>').insertBefore("#div-ad-celebrity");
+				break;
+		}
+	}
+}
+
+function diffDays(target_time){
+	var premiumDate = new moment(target_time);
+
+	var currentDateTime = new moment();
+	var currentDate = new moment(currentDateTime.format("YYYY-MM-DD")+" "+premiumDate.format("HH:mm:ss")); // make sure the time is same as target
+
+	var duration = moment.duration(premiumDate.diff(currentDate));
+	var day = duration.asDays();
+	return day;
+}
+
+function memberLoginReload(){
+	if (GetQueryString("login_return_url") != null ){
+		window.location.href = GetQueryString("login_return_url");
+	}else{
+		window.location.reload();
+	}
+}
+
+function hexToRgba(hex,opacity){
+    hex = hex.replace('#','');
+    r = parseInt(hex.substring(0,2), 16);
+    g = parseInt(hex.substring(2,4), 16);
+    b = parseInt(hex.substring(4,6), 16);
+
+    result = 'rgba('+r+','+g+','+b+','+opacity/100+')';
+    return result;
+}
+
+function showSwitchAccount(){
+	g_popup("switch_account", "", "", false, false, false, "");
+}
+
+function hideCompletedUserFeatures(){
+	$("#navIconHistory").hide();
+	$("#navIconBookmark").hide();
+
+	$("#member-profile").hide();
+	$("#user-menu-redeem").hide();
+	$("#user-menu-favorite").hide();
+	$("#user-menu-record").hide();
+	$("#user-menu-devices").hide();
+}
+
+function zendeskSendEmail() {
+	var user_id = (Cookies.get('user_id')) ? Cookies.get('user_id') : "";
+	var device_id = Cookies.get("_ottUID");
+	var user_type = Cookies.get("user_type");
+	var platform = Cookies.get("platform");
+	var session_id = Cookies.get("PHPSESSID");
+	
+	var user_plan = "";
+	switch(user_type) {
+		case "2":
+			user_plan = "Premium";
+			break;
+		case "3":
+			user_plan = "Premium Plus";
+			break;
+		default:
+			user_plan = "Free";
+			break;
+	}
+
+    window.location.href = 'mailto:' + region.enquiry_email + '?subject=I%20have%20a%20suggestion&body=%0A%0A----------%20Please%20Don%27t%20delete%20this---------%20%0AUser%20ID%20%3A%20' + user_id + '%20%0AUser%20IP%20%3A%20' + global_client_ip_addr + '%20%0ACurrent%20Country%20%3A%20' + global_area_code + '%20%0AUser%20Plan%20%3A%20' + user_plan + '%20%0APlatform%20%3A%20' + platform + '%20%0ASession%20ID%20%3A%20' + session_id + '%20%0ADevice%20ID%20%3A%20' + device_id;
+}
+
+function cprefSwitcher(cpref, url) {
+	window.location = url;
+}
+
+function tvupgrade() {
+	var tv_user_id = GetQueryString('user_id');
+	var tv_nickname = GetQueryString('nickname');
+
+	var user_id = Cookies.get('user_id');
+
+	if (user_id != undefined && user_id != "") {
+		if(tv_user_id != null && user_id != tv_user_id){
+			var title = LANG_text["tv_upgrade_plus_account_diff_title"];
+			if(tv_nickname != null){
+				var description = LANG_text["tv_upgrade_plus_account_diff_description_with_nickname"].replace("{username}", tv_nickname).replace("{userid}", tv_user_id);
+			}else{
+				var description = LANG_text["tv_upgrade_plus_account_diff_description"].replace("{userid}", tv_user_id);
+			}
+			var button = LANG_text["tv_upgrade_plus_account_diff_button"];
+
+			g_popup("", title, description, false, false, "", button, "");
+
+			var screenName = "Miscellaneous - QR code scanner";
+			var screenMetadata = "TV Upgrade P+ Failure";
+			screenTracking(screenName, screenMetadata);
+		}
+	}
+}
+
+function screenTracking(screenName, screenMetadata){
+	var user_type_text = [
+		'Anonymous',
+		'Free',
+		'Premium',
+		'Premium+'
+	];
+
+	var tracking_user_level = parseInt(Cookies.get('user_level')) || 0;
+	var tracking_user_type = user_type_text[tracking_user_level];
+
+	dataLayer.push({
+		'event': 'GA_SCREENVIEW',
+		'event_screen': screenName,
+		'screen_metadata': screenMetadata,
+		'user_type': tracking_user_type,
+		'subscription_entry_point': Cookies.get('entry_point_ga')
+	});
+
+	tracking.facade.screen_push(
+		screenName,
+		null,
+		null,
+		null,
+		null,
+		null,
+		screenMetadata,
+		Cookies.get('entry_point_ama')
+	);
+}
+
+function getShowAdRemoteConfig(callback) {
+	var onboarding_session = (Cookies.get('onboarding_session')) ? Cookies.get('onboarding_session') : "";
+	var _ottAID = (Cookies.get('_ottAID')) ? Cookies.get('_ottAID') : "";
+
+	var remote_config_key = "";
+	if (onboarding_session == _ottAID) {
+		remote_config_key = "onboarding_show_ad";
+	}else {
+		remote_config_key = "user_show_ad";
+	}
+
+	remoteConfig.fetchAndActivate()
+	.then(() => {
+		var show_ad_config = remoteConfig.getValue(remote_config_key).asString();
+
+		callback(show_ad_config);
+	})
+	.catch((err) => {
+		console.error(err);
+	});
+}
