@@ -1,0 +1,207 @@
+$(function(){
+    if (encrypted_user != "") {
+        var user_info = JSON.parse(Base64.decode(encrypted_user));
+
+    //    alert(JSON.stringify(user_info));
+
+        if (typeof user_info.status !== "undefined" && user_info.status == 0) {
+            var data = {
+                'identity': user_info.data.identity,
+                'platform_flag_label': 'web'
+            };
+
+            $.ajax({
+                type: 'POST',
+                url: web_api_url+'user/login',
+                data: JSON.stringify(data),
+                success:function(response){
+                    response = JSON.parse(response);
+
+                    // login tracking
+                    window.tracking.Tracker.globalParamters.addDimension(
+                        tracking.dimension.LOGIN_METHOD,
+                        "AppleID"
+                    );
+
+                    window.tracking.Tracker.globalParamters.addDimension(
+                        tracking.dimension.SCREEN_METADATA,
+                        "AppleID"
+                    );
+
+                    if (response.status.code === 0) { // login successfully
+                        var user_data = response.data.user;
+                        Cookies.set('user_id', user_data.user_id);
+                        Cookies.set('username', user_data.username);
+                        Cookies.set('nickname', user_data.nickname);
+                        Cookies.set('account_type', user_data.account_type);
+//remove set-operators-device
+                       $.ajax({
+                                url: web_api_url+'user/info'
+                            }).done(function (response) {
+                                var infoResponse = JSON.parse(response);
+
+                                if (infoResponse.status.code === 0 && infoResponse.data.user.user_id != null) {
+                                    var user_data = infoResponse.data.user;
+
+                                    var time_diff = user_data.last_login_time - user_data.created_time;
+
+                                    if (time_diff <= 60) {
+                                        var action_type = 1; // Register
+                                    }else {
+                                        var action_type = 2; // Login
+                                    }
+
+                                    Cookies.set('social_account_email', user_data.social_account_email);
+
+                                    Cookies.set('user_level', user_data.user_level);
+						            Cookies.set('has_free_trial', user_data.has_free_trial);
+
+                                    if (user_data.operators){
+                                        if (user_data.operators.body != "null"){ // VIP member
+                                            $("body").addClass("vip");
+                                        }
+
+                                        window.tracking.Tracker.globalParamters.addDimension(
+                                            tracking.globalDimension.USER_SUBSCRIPTION_SOURCE,
+                                            user_data.operators.label
+                                        )
+                                    }
+
+                                    if (action_type == 1) { // Register
+                                        window.tracking.Tracker.globalParamters.addDimension(
+											tracking.dimension.USER_TYPE,
+											"True"
+                                        );
+
+										appleidTracking("reg", true);
+
+										var social_account_email = "";
+										if (user_data.social_account_email != "null" && user_data.social_account_email != "") {
+											social_account_email = user_data.social_account_email;
+										}
+
+                                        // var user_profile = {
+										// 	"Identity": user_data.user_id,
+										// 	"Name": user_data.nickname,
+										// 	"User type": user_data.type,
+										// 	"Email": social_account_email
+                                        // };
+
+										var user_profile = {
+                                            "Identity": user_data.user_id,
+                                            "Device ID": Cookies.get('_ottUID'),
+											"Name": user_data.nickname,
+											"User type": user_data.type,
+											"Email": social_account_email
+										};
+
+										console.log(user_profile);
+
+										setClevertapProfile(user_profile);
+                                    }else if (action_type == 2) { // Login
+                                        window.tracking.Tracker.globalParamters.addDimension(
+											tracking.dimension.USER_TYPE,
+											"False"
+                                        );
+
+										appleidTracking("login", true);
+									}
+
+                                    var $el = $('.v-topnav .v-user').hide().filter('.user-logged-on').show();
+
+                                    if (user_info.data.head_portrait_url){
+                                        $el.find('#header_profile_pic').attr('src', user_info.data.head_portrait_url);
+                                    }else{
+                                        $el.find('#header_profile_pic').attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+                                    }
+
+                                    $el.find('#header_profile_pic').error(function(){
+                                        $el.find('#header_profile_pic').attr('src', '/ott/'+global_area_code+'/v1/images/header/menu_profilePic_guest.svg');
+                                    })
+                                    $('.user-menu dt').html(user_info.data.nickname);
+                                    $el.find('i').html('').hide();
+									$el.show();
+                                }else{
+									// login fail tracking starts
+									window.tracking.Tracker.globalParamters.addDimension(
+										tracking.dimension.ERROR_CODE,
+										infoResponse.status.code
+									);
+									window.tracking.Tracker.globalParamters.addDimension(
+										tracking.dimension.ERROR_MESSAGE,
+										infoResponse.status.message
+									);
+
+									appleidTracking("login", false);
+									// login fail tracking ends
+								}
+                            });
+//end remove set-operators-device
+                    }
+                }
+            });
+        }
+    }
+});
+
+
+
+function appleidTracking(type, success){
+	if (type == "login"){ // login
+		if (success){
+			tracking.facade.screen_profileLogin(
+				"Home - Successful Login",
+				function (data){
+					cb_fbTracking();
+				}
+            );
+
+            dataLayer.push({
+				'event': 'GA_SCREENVIEW',
+				'event_screen': 'Home - Successful Login',
+				'is_new_user': 'False',
+				'screen_metadata': 'AppleID'
+			});
+		}else{
+			tracking.facade.event_profileLoginFailure(
+				window.tracking.screen.APPLEID_LOGIN,
+				function (data){
+					cb_fbTracking();
+				}
+			);
+		}
+
+	}else if (type == "reg"){ // register
+		if (success){
+			// facebook pixel start
+			// fbq('track', 'CompleteRegistration', {
+			// 	registration_method: 'AppleID Login'
+			// });
+			// facebook pixel end
+
+			tracking.facade.screen_profileRegister(
+				"Home - Successful Login",
+				function (data){
+					cb_fbTracking();
+				}
+            );
+
+            dataLayer.push({
+				'event': 'GA_SCREENVIEW',
+				'event_screen': 'Home - Successful Login',
+				'is_new_user': 'True',
+				'screen_metadata': 'AppleID'
+			});
+
+			// VWO
+			vwo_register_tracking();
+		}else{
+			tracking.facade.event_profileRegisterFailure(
+				window.tracking.screen.APPLEID_LOGIN,
+				function (data){
+					cb_fbTracking();
+				}
+			);
+		}
+	}
+}

@@ -1,0 +1,68 @@
+var cookies_expires_length = 5; // in minutes
+var entry_point_key_changed = false; // flag
+
+$(function(){
+	// member center
+	$('.user-menu-prem a').on('click', function (e) {
+		e.preventDefault();
+		var targetUrl = $(this).attr("href");
+		Cookies.set("entry_point_key", "member_center", { expires: expectedDateTime(cookies_expires_length) });
+		window.location = targetUrl;
+	});
+	$('#prem-content-top a').on('click', function (e) {
+		e.preventDefault();
+		var targetUrl = $(this).attr("href");
+		Cookies.set("entry_point_key", "member_center", { expires: expectedDateTime(cookies_expires_length) });
+		window.location = targetUrl;
+	});
+
+	// free banner
+	$('#free-banner-body a').on('click', function (e) {
+		e.preventDefault();
+		var targetUrl = $(this).attr("href");
+		Cookies.set("entry_point_key", "free_banner", { expires: expectedDateTime(cookies_expires_length) });
+		var win = window.open(targetUrl, '_blank');
+		win.focus();
+	});
+
+	// premium banner
+	$('#v-premium-banner .premium_blocker_content a').on('click', function (e) {
+		Cookies.set("entry_point_key", "premium_banner", { expires: expectedDateTime(cookies_expires_length) });
+	});
+
+	// premium blocker
+	$('#v-premium-blocker .premium_blocker_header a').on('click', function (e) {
+		e.preventDefault();
+		var targetUrl = $(this).attr("href");
+		Cookies.set("entry_point_key", "premium_blocker", { expires: expectedDateTime(cookies_expires_length) });
+		var win = window.open(targetUrl, '_blank');
+		win.focus();
+	});
+	$('#v-premium-blocker .premium_blocker_footer a').on('click', function (e) {
+		if(!entry_point_key_changed){
+			Cookies.set("entry_point_key", "premium_blocker", { expires: expectedDateTime(cookies_expires_length) });
+		}
+	});
+
+	// footer
+	$('#footer-prem a').on('click', function (e) {
+		e.preventDefault();
+		var targetUrl = $(this).attr("href");
+		Cookies.set("entry_point_key", "footer", { expires: expectedDateTime(cookies_expires_length) });
+		window.location = targetUrl;
+	});
+
+	// tv_free_trial
+	if(GetQueryString('action') == "tv_free_trial"){
+		Cookies.set("entry_point_key", "tv", { expires: expectedDateTime(cookies_expires_length) });
+	}
+});
+
+function setEntryPointKey(key){
+	Cookies.set("entry_point_key", key, { expires: expectedDateTime(cookies_expires_length) });
+}
+
+function expectedDateTime(addMinutes){
+	var expected = new Date(new Date().getTime() + addMinutes * 60 * 1000);
+	return expected;
+}
