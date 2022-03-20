@@ -1,0 +1,1890 @@
+;
+(function() {
+
+    var sourceList = [];
+    var subtitleList = [];
+    var currentEnableSubtitle = {};
+    var currentQuality = 0;
+    var bitmovinPlayer = null;
+    var bitmovinSource = [];
+    var bitmovinMarkers = [];
+    var timestamp = 0;
+    var showCaption = true;
+    var userInactiveTimeout = null;
+    var resolutions_key = { 1080: "fullhd", 720: "hd", 480: "sd", 240: "smooth" };
+    var availableResolution;
+    var shouldMuteOnAutoPlay = undefined;
+    var volumeGridListenSetup = false;
+    var isAdPlaying = false;
+    var bitmovinImaAdsManager;
+    var numOfAdPlayed = 0; // for data tracking videowatching event, fire if there is no ads, or 1st ad is already played
+    var prebidAdUnitsArray = [];
+    var prebidAdUnitsDict = {};
+    var globalPrebidedAdObject = [];
+    var firstSubtitle;
+
+    var noop = function() {};
+
+    // UI instance
+    var controlBarUiManager;
+
+    var logType = "";
+    try {
+        logType = localStorage && localStorage.getItem("viuplayer-log");
+    } catch (e) {}
+
+    var log = (viuplayer.log = (function() {
+        if (logType === "normal" || videojs.browser.IE_VERSION) {
+            // log without style
+            return console.info.bind(console, "[Viu Player]:");
+        } else if (logType) {
+            // log with style
+            return console.info.bind(console, "%c[Viu Player]:", "font-weight: bold; color:#FFBF00;");
+        } else {
+            return noop;
+        }
+    })());
+
+    var iOS_Chrome = /CriOS/i.test(navigator.userAgent);
+
+    var tempCallback;
+
+    function viuplayer(id, options, ready, onLoadCallback) {
+        id = id || 0;
+        options = options || {};
+
+        // if viu-player is already initialized, just return the player object
+        if ($('#viu-player').hasClass('viu-player')) {
+            return Promise.resolve(bitmovinPlayer);
+        }
+
+        var source = handleSource(options);
+        var adBreaksSchedule = getAdBreaks(source);
+
+        
+        tempCallback = onLoadCallback;
+
+        /* Create Player */
+        return (window.bitmovinPlayer = bitmovinPlayer =
+          handlePreBid(adBreaksSchedule)
+            .then(
+              adBreaks =>
+                new bitmovin.player.Player(document.getElementById(id), {
+                  key: "1c444b9c-fcea-4772-b31c-6baa8fc8da04",
+                  ui: false,
+                  playback: {
+                    autoplay: true,
+                    muted: true,
+                  },
+                  advertising: {
+                    adBreaks: adBreaks,
+                    strategy: {
+                      shouldPlayAdBreak: function (adBreak) {
+                        return true;
+                      },
+                      shouldPlaySkippedAdBreaks: function (skipped, from, to) {
+                        return skipped;
+                      },
+                    },
+                    beforeInitialization: adSettings => {
+                      if (sourceList[0].ima.locale) {
+                        adSettings.setLocale(sourceList[0].ima.locale);
+                      }
+                    },
+                    onAdsManagerAvailable: IMAAdManager => {
+                      window.bitmovinImaAdsManager = bitmovinImaAdsManager = IMAAdManager;
+                      IMAAdManager.addEventListener(google.ima.AdEvent.Type.LOADED, IMAEvent => {
+                        var adProgressData = IMAEvent.getAdData();
+                        playerHandler().trigger("ima_ad_loaded", adProgressData);
+                      });
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.IMPRESSION,
+                        IMAEvent => {
+                          firstSubtitle = null;
+                          var adProgressData = IMAEvent.getAd();
+                          if (globalPrebidedAdObject.length > 0) {
+                              globalPrebidedAdObject = globalPrebidedAdObject.filter(value => value.tag.url !== IMAEvent.currentTarget.L);
+                          }
+                          playerHandler().trigger("ima_ad_impression", adProgressData);
+                        }
+                      );
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger("ima_ad_content_pause_requested", adProgressData);
+                        }
+                      );
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger(
+                            "ima_ad_content_resume_requested",
+                            adProgressData
+                          );
+                        }
+                      );
+                      IMAAdManager.addEventListener(google.ima.AdEvent.Type.PAUSED, IMAEvent => {
+                        var adProgressData = IMAEvent.getAdData();
+                        playerHandler().trigger("ima_ad_paused", adProgressData);
+                      });
+                      IMAAdManager.addEventListener(google.ima.AdEvent.Type.RESUMED, IMAEvent => {
+                        var adProgressData = IMAEvent.getAdData();
+                        playerHandler().trigger("ima_ad_resumed", adProgressData);
+                      });
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.FIRST_QUARTILE,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger("ima_ad_first_quartile", adProgressData);
+                        }
+                      );
+                      IMAAdManager.addEventListener(google.ima.AdEvent.Type.MIDPOINT, IMAEvent => {
+                        var adProgressData = IMAEvent.getAdData();
+                        playerHandler().trigger("ima_ad_midpoint", adProgressData);
+                      });
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.THIRD_QUARTILE,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger("ima_ad_third_quartile", adProgressData);
+                        }
+                      );
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger("ima_ad_all_ads_completed", adProgressData);
+                        }
+                      );
+                      IMAAdManager.addEventListener(
+                        google.ima.AdEvent.Type.VOLUME_CHANGED,
+                        IMAEvent => {
+                          var adProgressData = IMAEvent.getAdData();
+                          playerHandler().trigger("ima_ad_volume_changed", adProgressData);
+                        }
+                      );
+                    },
+                  },
+                })
+            )
+            .then(player => {
+              window.bitmovinPlayer = bitmovinPlayer = player;
+              
+              hotKeyHandler(options);
+              pageVisibilityHandler();
+
+              bitmovinPlayer.on(bitmovin.player.PlayerEvent.TimeChanged, function (data) {
+                timestamp = data.time;
+              });
+
+              bitmovinPlayer.on(bitmovin.player.PlayerEvent.Paused, function (data) {
+                $("#viu-player").removeClass("vjs-playing").addClass("vjs-pause");
+              });
+
+              bitmovinPlayer.on(bitmovin.player.PlayerEvent.Play, function (data) {
+                $("#viu-player").addClass("vjs-playing").removeClass("vjs-pause");
+              });
+
+              viuplayerhousekeep(options);
+              tempCallback(bitmovinPlayer);
+
+              bitmovinPlayer.on("destroy", function () {
+                volumeGridListenSetup = false;
+              });
+
+              /* Load options and play video according to config */
+              playerLoadSource(bitmovinSource, options.startIndex);
+              console.log("[bitmovin]", options);
+              return bitmovinPlayer;
+            }));
+    }
+
+    function updateviuplayer(options) {
+        console.log("[bitmovin]", "update", options);
+        uiManager.release();
+        var source = handleSource(options);
+        var adBreaksSchedule = getAdBreaks(source);
+        // adBreaksSchedule.forEach(ad => {
+        //     bitmovinPlayer.ads.schedule(ad);
+        // });
+        viuplayerhousekeep(options);
+        // playerLoadSource(bitmovinSource, _, tempCallback);
+        if (adBreaksSchedule.length > 0) {
+            return handlePreBid(adBreaksSchedule)
+                    .then(prebidedAd => {
+                        prebidedAd.forEach(ad => {
+                            bitmovinPlayer.ads.schedule(ad);
+                        });
+                    })
+                    .then(() => {
+                        playerLoadSource(bitmovinSource);
+                        return bitmovinPlayer;
+                    })
+        } else {
+            playerLoadSource(bitmovinSource);
+            return bitmovinPlayer;
+        }
+    }
+
+    function viuplayerhousekeep(options) {
+        /* UI handling */
+        var uiManager = new bitmovin.playerui.UIManager(bitmovinPlayer, [
+        //   {
+        //     ui: createBlockedUIContainer(),
+        //     condition: () => $("#viu-player").hasClass("blocked"),
+        //   },
+        //   {
+        //     ui: createAdBreakUIContainer(),
+        //     condition: (context) => context.isAd,
+        //   },
+          {
+            ui: createUIContainer(),
+          },
+        ]);
+        // uiManager.onUiVariantResolve.subscribe((sender, context) => {
+        //     if (!context.isAd && $("#viu-player").hasClass("blocked")) {
+        //         context.isAd = true;
+        //     }
+        // });
+        window.uiManager = uiManager;
+        controlBarUiManager = uiManager.currentUi.getUI().config.components.find((item) => item.config.cssClass === 'ui-controlbar');
+        controlBarUiManager = controlBarUiManager.config.components.find((item) => item.config.cssClass === 'ui-container');
+
+        addClassName();
+
+        handleSubtitle();
+        handlePlayerUserActiveStatus();
+        handleBufferingOverlay();
+        handlePlaybackButton();
+        handleVolumeSlider();
+        handleVideoOptionPanel();
+        handleCaption();
+        handleTotalTimeToggle();
+        handleTopMuteButton();
+        handleWaterMark();
+        handlePlaybacktimelabel();
+        handleAdBreak();
+        handleSubtitleButton();
+        handleQualityButton();
+        handlePlayerWarning();
+
+        // [HACK] Copy from detail_bitmovin.js
+        // define premium banner
+        $(".premium_blocker_content").hide();
+        $(".premium_blocker_content>a>div").hide();
+        switch(details.current_product.campaign_name){
+            case "csl_seamless":
+                $(".csl_seamless_premium_blocker_content").show();
+                break;
+            default:
+                if(details.current_product.user_level == 3){
+                    $(".default_premium_blocker_content .pplus_only").show();
+                }else{
+                    $(".default_premium_blocker_content .p_and_pplus").show();
+                }
+                $(".default_premium_blocker_content").show();
+                break;
+        }
+    }
+
+    function createUIContainer() {
+        let subtitleOverlay = new bitmovin.playerui.SubtitleOverlay();
+
+        let settingsPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                new bitmovin.playerui.SettingsPanelPage({
+                    components: [
+                        new bitmovin.playerui.SettingsPanelItem('Video Quality', new bitmovin.playerui.VideoQualitySelectBox()),
+                        new bitmovin.playerui.SettingsPanelItem('Speed', new bitmovin.playerui.PlaybackSpeedSelectBox()),
+                        new bitmovin.playerui.SettingsPanelItem('Audio Quality', new bitmovin.playerui.AudioQualitySelectBox()),
+                    ],
+                }),
+            ],
+            hidden: true,
+        });
+
+        /*Custom quality options */
+        let qualityOptionList = [];
+        availableResolution.forEach((resolution,i)=>{
+            var btnClass = currentQuality == resolution ? 'bmpui-ui-button vjs-selected' : 'bmpui-ui-button';
+            var qualityButton = new bitmovin.playerui.Button({
+                id: 'resolution_' + resolution,
+                cssClass: btnClass
+            });
+
+            qualityButton.onClick.subscribe(function (event) {
+                if (switchQuality(resolution)) {
+                    switchedQuality = true;
+                    handleButtonSelectStyle(event);
+                }
+            });
+            var premium_icon = '<img src="/ott/hk/v1/images/p_icon_18.png" width="18" height="18" style=" height: 1em; width: 1em; vertical-align: middle; margin-right: 5px; margin-bottom: 2px; " class="premium_mark">';
+            var isPremiumRequire = false;
+            if (typeof user !== 'undefined') {
+                isPremiumRequire =  user.permit.resolution['p'+resolution] === '0' ? true : false;
+            } else if (typeof anonUser !== 'undefined') {
+                isPremiumRequire = anonUser.permit.resolution['p'+resolution] === '0' ? true : false;
+            } else {
+                isPremiumRequire = region.components.vod.free_resolutions.indexOf(~~resolution) < 0 && !isVip;
+            }
+            qualityButton.setText((isPremiumRequire ? premium_icon : '') + LANG_text[resolutions_key[resolution]]);
+            qualityOptionList.push(new bitmovin.playerui.SettingsPanelItem(null, qualityButton));
+        });
+        // sourceList.forEach((oneSource,i)=>{
+        //     var btnClass = currentQuality == i ? 'bmpui-ui-button vjs-selected' : 'bmpui-ui-button';
+        //     var qualityButton = new bitmovin.playerui.Button({
+        //         id: 'resolution_' + oneSource.id,
+        //         cssClass: btnClass
+        //     });
+
+        //     qualityButton.onClick.subscribe(function (event) {
+        //         switchQuality(i);
+        //         handleButtonSelectStyle(event);
+        //     });
+        //     qualityButton.setText(oneSource.title)
+        //     qualityOptionList.push(new bitmovin.playerui.SettingsPanelItem(null, qualityButton));
+        // });
+
+        let customTrackSettingsPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                new bitmovin.playerui.SettingsPanelPage({
+                    components: qualityOptionList,
+                }),
+            ],
+            hidden: true,
+            hideDelay: -1,
+            cssClass: 'ui-settings-panel',
+        });
+        /*End Custom quality options */
+
+        /* Caption on/off option*/
+        let captionOption = [];
+        let onBtn = new bitmovin.playerui.Button({id: '2nd_subtitle_on', cssClass: (showCaption ? 'bmpui-ui-button vjs-selected' : 'bmpui-ui-button')});
+        onBtn.onClick.subscribe(function (event) {
+            showCaption = true;
+            handleButtonSelectStyle(event);
+        });
+        onBtn.setText(LANG_text["caption_on"]);
+        captionOption.push(new bitmovin.playerui.SettingsPanelItem(null, onBtn));
+        let offBtn = new bitmovin.playerui.Button({id: '2nd_subtitle_off', cssClass: (!showCaption ? 'bmpui-ui-button vjs-selected' : 'bmpui-ui-button')});
+        offBtn.onClick.subscribe(function (event) {
+            showCaption = false;
+            handleButtonSelectStyle(event);
+        });
+        offBtn.setText(LANG_text["caption_off"]);
+        captionOption.push(new bitmovin.playerui.SettingsPanelItem(null, offBtn));
+
+        let captionOptionPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                new bitmovin.playerui.SettingsPanelPage({
+                    components: captionOption,
+                }),
+            ],
+            hidden: true,
+            hideDelay: -1,
+            cssClass: 'ui-settings-panel',
+        });
+        /* End Caption on/off option */
+
+        /*Custom top subtitle options */
+        // let topSubtitleList = [];
+        // let topSubtitleButton = new bitmovin.playerui.Button({cssClass: 'ui-listbox-button bmpui-ui-button subtitleoff'});
+        // topSubtitleButton.setText('Off')
+        // topSubtitleButton.onClick.subscribe(function () {
+        //     disaleTopSubtitle()
+        //     handleChangeSelectedSubtitleStyle('subtitleoff', null, 'topsubtitle');
+        // });
+        // topSubtitleList.push(new bitmovin.playerui.SettingsPanelItem(null, topSubtitleButton));
+
+        // subtitleList.forEach((subtitle,i)=>{
+        //     topSubtitleButton = new bitmovin.playerui.Button({cssClass: 'ui-listbox-button bmpui-ui-button'});
+        //     topSubtitleButton.setText(subtitle.label)
+        //     topSubtitleButton.onClick.subscribe(function () {
+        //         changeTopSubtitleTo(subtitle.id);
+        //         handleChangeSelectedSubtitleStyle(subtitle.id, subtitle.label, 'topsubtitle');
+        //     });
+
+        //     topSubtitleList.push(new bitmovin.playerui.SettingsPanelItem(null, topSubtitleButton));
+        // })
+        // // Move off button to last position
+        // topSubtitleList.push(topSubtitleList.splice(0, 1)[0]);
+
+        // let topSubtitleSettingsPanel = new bitmovin.playerui.SettingsPanel({
+        //     components: [
+        //         new bitmovin.playerui.SettingsPanelPage({
+        //             components: topSubtitleList,
+        //         }),
+        //     ],
+        //     hidden: true,
+        //     hideDelay: -1,
+        //     cssClass: 'ui-settings-panel',
+        // });
+        /*End Custom top subtitle options */
+
+        /*Custom bottom subtitle options */
+        let bottomSubtitleList = [];
+        let bottomSubtitleButton = new bitmovin.playerui.Button({cssClass: 'bmpui-ui-button'});
+        bottomSubtitleButton.setText(LANG_text["close"]);
+        bottomSubtitleButton.onClick.subscribe(function (event) {
+            playerHandler().trigger("subtitlechange", {
+                label: $(event.getDomElement().getHtml()).text()
+            });
+            disaleBottomSubtitle();
+            handleButtonSelectStyle(event);
+        });
+        bottomSubtitleList.push(new bitmovin.playerui.SettingsPanelItem(null, bottomSubtitleButton));
+        subtitleList.forEach((subtitle,i)=>{
+            let isSelected = typeof currentEnableSubtitle["bottom"] === 'undefined' ? subtitle.default : currentEnableSubtitle["bottom"] == subtitle.lang;
+            bottomSubtitleButton = new bitmovin.playerui.Button({cssClass: isSelected ? 'bmpui-ui-button vjs-selected' : 'bmpui-ui-button'});
+            bottomSubtitleButton.setText(subtitle.label);
+            bottomSubtitleButton.onClick.subscribe(function (event) {
+                playerHandler().trigger("subtitlechange", {
+                    label: $(event.getDomElement().getHtml()).text()
+                });
+                changeBottomSubtitleTo(subtitle.id);
+                handleButtonSelectStyle(event);
+            });
+
+            bottomSubtitleList.push(new bitmovin.playerui.SettingsPanelItem(null, bottomSubtitleButton));
+        })
+        // Move off button to last position
+        bottomSubtitleList.push(bottomSubtitleList.splice(0, 1)[0]);
+
+        let bottomSubtitleSettingsPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                new bitmovin.playerui.SettingsPanelPage({
+                    components: bottomSubtitleList,
+                }),
+            ],
+            hidden: true,
+            hideDelay: -1,
+            cssClass: 'ui-settings-panel',
+        });
+        /*End Custom bottom subtitle options */
+
+
+        let subtitleListBox = new bitmovin.playerui.SubtitleListBox();
+
+        let subtitleListBoxSettingsPanelPage = new bitmovin.playerui.SettingsPanelPage({
+            components: [
+                new bitmovin.playerui.SettingsPanelItem(null, subtitleListBox),
+            ],
+        });
+
+        let subtitleSettingsPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                subtitleListBoxSettingsPanelPage,
+            ],
+            hidden: true,
+            pageTransitionAnimation: false,
+        });
+
+        let subtitleSettingsPanelPage = new bitmovin.playerui.SubtitleSettingsPanelPage({
+            settingsPanel: subtitleSettingsPanel,
+            overlay: subtitleOverlay,
+        });
+
+        let subtitleSettingsOpenButton = new bitmovin.playerui.SettingsPanelPageOpenButton({
+            targetPage: subtitleSettingsPanelPage,
+            container: subtitleSettingsPanel,
+            text: 'Settings',
+            cssClasses: ['customization-open-button']
+        });
+
+        subtitleListBoxSettingsPanelPage.addComponent(
+            new bitmovin.playerui.SettingsPanelItem(null, subtitleSettingsOpenButton, {
+                cssClasses: ['subtitle-customization-settings-panel-item']
+            })
+        );
+        subtitleSettingsPanel.addComponent(subtitleSettingsPanelPage);
+
+        let audioTrackListBox = new bitmovin.playerui.AudioTrackListBox();
+        let audioTrackSettingsPanel = new bitmovin.playerui.SettingsPanel({
+            components: [
+                new bitmovin.playerui.SettingsPanelPage({
+                    components: [
+                        new bitmovin.playerui.SettingsPanelItem(null, audioTrackListBox),
+                    ],
+                }),
+            ],
+            hidden: true,
+        });
+
+        let controlBar = new bitmovin.playerui.ControlBar({
+            components: [
+                customTrackSettingsPanel,
+                audioTrackSettingsPanel,
+                captionOptionPanel,
+                // topSubtitleSettingsPanel,
+                bottomSubtitleSettingsPanel,
+                settingsPanel,
+                new bitmovin.playerui.Container({
+                    components: [
+                        new bitmovin.playerui.PlaybackToggleButton({id: 'play_pause' }),
+                        new bitmovin.playerui.PlaybackTimeLabel({
+                            id: 'current_time',
+                            timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.CurrentTime,
+                            hideInLivePlayback: true
+                        }),
+                        new bitmovin.playerui.SeekBar({
+                            id: 'scrubber_bar',
+                            label: new bitmovin.playerui.SeekBarLabel()
+                        }),
+                        new bitmovin.playerui.PlaybackTimeLabel({
+                            id: 'total_time',
+                            timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.TotalTime,
+                            hideInLivePlayback: true,
+                            cssClasses: ['text-right', 'total-time']
+                        }),
+                        new bitmovin.playerui.PlaybackTimeLabel({
+                            timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.RemainingTime,
+                            hideInLivePlayback: true,
+                            cssClasses: ['text-right', 'remaining-time']
+                        }),
+                        new bitmovin.playerui.VolumeToggleButton({
+                            id: 'mute_unmute',
+                            text: ''
+                        }),
+                        new bitmovin.playerui.VolumeSlider(),
+                        new bitmovin.playerui.SettingsToggleButton({
+                            id: '2nd_subtitle_list',
+                            settingsPanel: captionOptionPanel,
+                            cssClass: 'ui-captionsettingstogglebutton hide',
+                        }),
+                        // new bitmovin.playerui.SettingsToggleButton({
+                        //     settingsPanel: topSubtitleSettingsPanel,
+                        //     cssClass: 'ui-topsubtitlesettingstogglebutton',
+                        // }),
+                        new bitmovin.playerui.SettingsToggleButton({
+                            id: '1st_subtitle_list',
+                            settingsPanel: bottomSubtitleSettingsPanel,
+                            cssClass: 'ui-bottomsubtitlesettingstogglebutton',
+                        }),
+                        new bitmovin.playerui.SettingsToggleButton({
+                            id: 'resolution_list',
+                            settingsPanel: customTrackSettingsPanel,
+                            cssClass: 'ui-qualitysettingstogglebutton',
+                        }),
+                        new bitmovin.playerui.FullscreenToggleButton({ id: 'enter_exit_full_screen' }),
+                    ],
+                    cssClasses: ['controlbar-bottom'],
+                }),
+            ],
+        });
+
+        return new bitmovin.playerui.UIContainer({
+            components: [
+                // subtitleOverlay,
+                new bitmovin.playerui.BufferingOverlay({showDelayMs: 0}),
+                new bitmovin.playerui.PlaybackToggleOverlay(),
+                new bitmovin.playerui.CastStatusOverlay(),
+                new bitmovin.playerui.VolumeToggleButton({
+                    cssClass: 'unmute-button unmute-button',
+                    text: ''
+                }),
+                controlBar,
+                // new bitmovin.playerui.TitleBar(),
+                new bitmovin.playerui.RecommendationOverlay(),
+                new bitmovin.playerui.Watermark(),
+                new bitmovin.playerui.ErrorMessageOverlay(),
+            ],
+        });
+    }
+
+    // TODO UI set for ad break interface
+    // function createAdBreakUIContainer() {
+    //     let controlBar = new bitmovin.playerui.ControlBar({
+    //         components: [
+    //             new bitmovin.playerui.Container({
+    //                 components: [
+    //                     new bitmovin.playerui.PlaybackToggleButton({cssClasses: ['adplaybacktogglebutton']}),
+    //                     new bitmovin.playerui.PlaybackTimeLabel({ timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.CurrentTime, hideInLivePlayback: true }),
+    //                     new bitmovin.playerui.SeekBar({ label: new bitmovin.playerui.SeekBarLabel() }),
+    //                     new bitmovin.playerui.PlaybackTimeLabel({ timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.TotalTime, hideInLivePlayback: true, cssClasses: ['text-right', 'total-time'] }),
+    //                     new bitmovin.playerui.PlaybackTimeLabel({ timeLabelMode: bitmovin.playerui.PlaybackTimeLabelMode.RemainingTime, hideInLivePlayback: true, cssClasses: ['text-right', 'remaining-time'] }),
+    //                     new bitmovin.playerui.VolumeToggleButton(),
+    //                     new bitmovin.playerui.FullscreenToggleButton(),
+    //                 ],
+    //                 cssClasses: ['controlbar-bottom'],
+    //             }),
+    //         ],
+    //     });
+
+    //     return new bitmovin.playerui.UIContainer({
+    //         components: [
+    //             new bitmovin.playerui.BufferingOverlay({showDelayMs: 0}),
+    //             new bitmovin.playerui.PlaybackToggleOverlay(),
+    //             new bitmovin.playerui.CastStatusOverlay(),
+    //             controlBar,
+    //             new bitmovin.playerui.TitleBar(),
+    //             new bitmovin.playerui.RecommendationOverlay(),
+    //             new bitmovin.playerui.ErrorMessageOverlay(),
+    //         ],
+    //     });
+    // }
+
+    // TODO UI set for blocked interface
+    // function createBlockedUIContainer() {
+    //     let controlBar = new bitmovin.playerui.ControlBar({
+    //         components: [
+    //             new bitmovin.playerui.Container({
+    //                 components: [
+    //                     new bitmovin.playerui.VolumeToggleButton(),
+    //                     new bitmovin.playerui.VolumeSlider(),
+    //                     new bitmovin.playerui.FullscreenToggleButton(),
+    //                 ],
+    //                 cssClasses: ['controlbar-bottom'],
+    //             }),
+    //         ],
+    //     });
+
+    //     return new bitmovin.playerui.UIContainer({
+    //         components: [
+    //             new bitmovin.playerui.BufferingOverlay({showDelayMs: 0}),
+    //             new bitmovin.playerui.CastStatusOverlay(),
+    //             controlBar,
+    //             new bitmovin.playerui.TitleBar(),
+    //             new bitmovin.playerui.RecommendationOverlay(),
+    //             new bitmovin.playerui.ErrorMessageOverlay(),
+    //         ],
+    //     });
+    // }
+
+    function handleSource(options) {
+        /* Prepare source list */
+        bitmovinSource = [];
+        sourceList = [];
+        for (var i = 0; i < options.playlist.length; ++i) {
+            var playlist = options.playlist[i];
+            sourceList.push({
+                id: resolutions_key[playlist.resolution],
+                title:LANG_text[resolutions_key[playlist.resolution]],
+                ima:playlist.ima,
+                resolution:playlist.resolution,
+                sources:playlist.sources,
+                subtitles:playlist.subtitles,
+            });
+        }
+
+        
+        /* Declare source according quality option */
+        var source;
+        if(sourceList[options.startIndex] && !sourceList[options.startIndex].id){
+            currentQuality = sourceList[options.startIndex] && sourceList[options.startIndex].resolution;
+            source = sourceList.find(source => source.resolution == currentQuality);
+        } else {
+            source = sourceList.find(source => source.id == getUserDefaultQuality(options));
+            currentQuality = source ? source.resolution : sourceList[options.startIndex].resolution;
+            if(!source){
+                source = sourceList.find(source => source.resolution == currentQuality);
+            }
+        }
+        // availableResolution = options.availableResolution;
+        availableResolution = options.availableResolution.filter((item) => {
+            return sourceList.find(source => ''+source.resolution === item)
+        });
+
+        /* Prepare subtitle list */
+        subtitleList = [];
+        if (source.subtitles) {
+            for (var i = 0; i < source.subtitles.length; ++i) {
+                var subtitle = source.subtitles[i];
+                subtitleList.push({
+                    id:subtitle.srclang,
+                    kind:subtitle.kind,
+                    label:subtitle.label,
+                    lang:subtitle.srclang,
+                    url:subtitle.src,
+                    default:subtitle.default
+                });
+            }
+        }
+
+        /* Prepare bitmovin source config */
+        if (typeof infolineObj === 'object') {
+            function isDisplay(item) {
+                let isAd = item.is_ad === '1' ? true : false;
+                switch (user_type.toUpperCase()) {
+                    case "ANONYMOUS":
+                        return !isAd || (item.ad_auto_show_anonymous_user === '1' && isAd);
+                    case "FREE":
+                        return !isAd || (item.ad_auto_show_free_user === '1' && isAd);
+                    case "PREMIUM":
+                    case "PREMIUM PLUS":
+                        return !isAd || (item.ad_auto_show_premium_user === '1' && isAd);
+                    default:
+                        return true;
+                }
+            }
+            var infoline = infolineObj.filter((item) => isDisplay(item));
+            bitmovinMarkers = infoline.map(v=>({ time: ~~v.start_time, duration: ~~v.time_duration }));
+            seekbarMarkers = bitmovinMarkers;
+        } else if (!infolineObj) {
+            bitmovinMarkers = {};
+        }
+        // bitmovinSource = {
+        //     markers: bitmovinMarkers,
+        // };
+        if(!source.sources[0].src){
+            sourceList.shift();
+            source = sourceList[0];
+        }
+        if (source.sources[0].src.split('.').pop() === "mp4") {
+            bitmovinSource['progressive'] = [{
+                url: source.sources[0].src,
+                type: 'video/mp4'
+            }];
+        } else if (source.sources[0].src.split('.').pop() === "mpd") {
+            bitmovinSource['dash'] = source.sources[0].src;
+        } else {
+            bitmovinSource['hls'] = source.sources[0].src;
+        }
+
+        // DRM Testing
+        // bitmovinSource['dash'] = "https://gcpvuclip-a.akamaihd.net/exp=1619078298~acl=%2f59eaea8091495a9439af35118983fb5e%2f*~data=cid%3d1165111176%2csid%3d51c7416f-4be1-42f1-99e7-3294a39f8012%2cclientId%3dnone%2cn%3d1618387098981%2ch%3d4CB4F3F230972A15AF40C897D50EB0D7~hmac=95f2039bf679c818d6c7d8a4610bb0b409e9ecae8b8556f11bbba791d51799fd/59eaea8091495a9439af35118983fb5e/VP6_V20200922125535/P5/stream_sd_V20200922182628.mpd";
+        if (details.stream.drm) {
+            bitmovinSource['drm'] = {
+                widevine: {
+                    LA_URL: details.stream.drm.license_url,
+                    headers: {
+                        Authorization: details.stream.drm.token.authorization
+                    }
+                },
+                // playready: {
+                //     LA_URL: 'https://dev-api-gateway.ottuat.com/api/video/license/1165111176'
+                //     // headers: {
+                //     //     "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOlwvXC9kZXYtYXBpLWdhdGV3YXkub3R0dWF0LmNvbVwvYXBpXC9hdXRoXC90b2tlbiIsImlhdCI6MTYxODM4NjkzNiwiZXhwIjoxNjIwOTc4OTM2LCJuYmYiOjE2MTgzODY5MzYsImp0aSI6IkJ0Szd6aFpMdlNMZ1JSZloiLCJzdWIiOiI5MGZjMDAyZC0yNTM5LTQyY2MtOTg0OC05ZTUyNWJhOTI0NjEifQ._1f6Jk8fij30pdv-Dvq9wPMA1zK93LyEmzh6IqD6npM"
+                //     // }
+                // }
+            };
+        }
+
+        return source;
+    }
+
+    function getAdBreaks(source) {
+        /* Prepare ad schedule */
+        var adBreaksSchedule = [];
+        if (source.ima && source.ima.ads) {
+            for (var i = 0; i < source.ima.ads.length; ++i) {
+                var ad = source.ima.ads[i];
+                adBreaksSchedule.push({
+                    id: 'ad-'+i,
+                    tag: {
+                        url: ad.adTag,
+                        type: 'vast'
+                    },
+                    persistent: false,
+                    position: ad.time+'',
+                    linearAdUiConfig: {
+                        message: LANG_text["ad_remark_text"],
+                        // untilSkippableMessage: 'This ad is skippable in {remainingTime}',
+                        // skippableMessage: 'You can skip this ad now.'
+                    },
+                    discardAfterPlayback: true
+                });
+            }
+        }
+        adBreaksSchedule.forEach(item => {
+            var adPosition = ~~item.position;
+            if (adPosition > 0 && adPosition < ~~details.current_product.time_duration) {
+                // bitmovinSource.markers.push({ time: adPosition, cssClasses: ['ad-marker']});
+                seekbarMarkers.push({time: adPosition, cssClasses: ['ad-marker']});
+            }
+        });
+        // if (adBreaksSchedule.length === 0 || !adBreaksSchedule.find(item => item.position === '0')) {
+        //     bitmovinSource['markers'] = seekbarMarkers;
+        // }
+        // return [];
+        return adBreaksSchedule;
+    }
+
+    function handleSubtitle() {
+        bottomSubtitleDisplay = new CustomSubtitleDisplay("bottom", $('.bmpui-ui-uicontainer')[0]);
+        firstSubtitle = null;
+        // topSubtitleDisplay = new CustomSubtitleDisplay("top", $('.bmpui-ui-uicontainer')[0]);
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.CueEnter, (event)=>{
+            /*topSubtitleDisplay.showCue(event);*/
+            bottomSubtitleDisplay.showCue(event);
+            firstSubtitle = event;
+        });
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.CueExit, (event)=>{/*topSubtitleDisplay.hideCue(event);*/bottomSubtitleDisplay.hideCue(event)});
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.AudioChanged, (event)=>{/*topSubtitleDisplay.clear();*/bottomSubtitleDisplay.clear()});
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.SubtitleEnabled, (event)=>{
+            /*topSubtitleDisplay.clear();*/
+            if (firstSubtitle) {
+                bottomSubtitleDisplay.clear();
+                firstSubtitle.type = event.type;
+                bottomSubtitleDisplay.showCue(firstSubtitle);
+                firstSubtitle = null;
+            }
+        });
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.SubtitleDisabled, (event)=>{/*topSubtitleDisplay.clear();*/bottomSubtitleDisplay.clear()});
+        // bitmovinPlayer.on(bitmovin.player.PlayerEvent.Seek, (event)=>{/*topSubtitleDisplay.clear();*/bottomSubtitleDisplay.clear()});
+        // bitmovinPlayer.on(bitmovin.player.PlayerEvent.TimeShift, (event)=>{/*topSubtitleDisplay.clear();*/bottomSubtitleDisplay.clear()});
+        // bitmovinPlayer.on(bitmovin.player.PlayerEvent.PlayerResized, (event)=>{topSubtitleDisplay.clear();bottomSubtitleDisplay.clear();topSubtitleDisplay.updateFontSize();bottomSubtitleDisplay.updateFontSize()});
+
+        bitmovinPlayer.on('subtitleadded', (newSubtitle) => {
+            if (typeof currentEnableSubtitle["bottom"] === 'undefined') {
+                let defaultSubtitle = subtitleList.find(v => v.default);
+                if (defaultSubtitle) {
+                    currentEnableSubtitle["bottom"] = defaultSubtitle.id;
+                    bitmovinPlayer.subtitles.enable(defaultSubtitle.id, false);
+                }
+            } else {
+                bitmovinPlayer.subtitles.enable(currentEnableSubtitle["bottom"], false);
+            }
+        });
+    }
+
+    function handlePlaybackButton() {
+        // if($('.bmpui-adplaybacktogglebutton').children().length === 1) {
+        //     let adPlaybackButtonTemplate = '<span aria-hidden="true" class="playbackbutton-icon-placeholder"></span>'
+        //     let adPlaybackButtonElement = $(adPlaybackButtonTemplate);
+        //     adPlaybackButtonElement.insertAfter($('.bmpui-adplaybacktogglebutton>.bmpui-label'));
+        // }
+        if($('.bmpui-ui-playbacktogglebutton').children().length === 1) {
+            let playbackButtonTemplate = '<span aria-hidden="true" class="playbackbutton-icon-placeholder"></span>'
+            let playbackButtonElement = $(playbackButtonTemplate);
+            playbackButtonElement.insertAfter($('.bmpui-ui-playbacktogglebutton>.bmpui-label'));
+        }
+    }
+
+    function handleVolumeSlider() {
+        let volumeSliderTemplate = '<div class="vjs-volume-control vjs-control vjs-volume-horizontal">';
+        volumeSliderTemplate += '<div tabindex="0" class="vjs-volume-bar vjs-slider-bar vjs-slider vjs-slider-horizontal" role="slider" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Volume Level" aria-live="polite" aria-valuetext="100%">';
+        volumeSliderTemplate += '<div class="vjs-volume-level"><span class="vjs-control-text"></span></div>';
+        volumeSliderTemplate += '<div class="vjs-volume-level-grid-container">';
+        volumeSliderTemplate += '<div id="volume_1" class="vjs-volume-level-grid volume-level-grid-1"></div>';
+        volumeSliderTemplate += '<div id="volume_2" class="vjs-volume-level-grid volume-level-grid-2"></div>';
+        volumeSliderTemplate += '<div id="volume_3" class="vjs-volume-level-grid volume-level-grid-3"></div>';
+        volumeSliderTemplate += '<div id="volume_4" class="vjs-volume-level-grid volume-level-grid-4"></div>';
+        volumeSliderTemplate += '<div id="volume_5" class="vjs-volume-level-grid volume-level-grid-5"></div>';
+        volumeSliderTemplate += '<div id="volume_6" class="vjs-volume-level-grid volume-level-grid-6"></div>';
+        volumeSliderTemplate += '<div id="volume_7" class="vjs-volume-level-grid volume-level-grid-7"></div>';
+        volumeSliderTemplate += '</div>';
+        volumeSliderTemplate += '</div>';
+        volumeSliderTemplate += '</div>';
+
+        let volumeSliderElement = $(volumeSliderTemplate);
+        $('.bmpui-ui-volumeslider .bmpui-seekbar-backdrop').append(volumeSliderElement);
+
+        function updateVolumeGrid() {
+            var volumeValue,
+                currentMute = bitmovinPlayer.isMuted();
+            if (currentMute) {
+                volumeValue = 0;
+            } else {
+                volumeValue = bitmovinPlayer.getVolume();
+            }
+            $('.vjs-volume-level-grid').removeClass('active');
+            if (volumeValue >= 14) {
+                $('.volume-level-grid-1').addClass('active');
+            }
+            if (volumeValue >= 28) {
+                $('.volume-level-grid-2').addClass('active');
+            }
+            if (volumeValue >= 42) {
+                $('.volume-level-grid-3').addClass('active');
+            }
+            if (volumeValue >= 56) {
+                $('.volume-level-grid-4').addClass('active');
+            }
+            if (volumeValue >= 70) {
+                $('.volume-level-grid-5').addClass('active');
+            }
+            if (volumeValue >= 84) {
+                $('.volume-level-grid-6').addClass('active');
+            }
+            if (volumeValue >= 98) {
+                $('.volume-level-grid-7').addClass('active');
+            }
+        }
+
+        if (!volumeGridListenSetup) {
+            bitmovinPlayer.on(bitmovin.player.PlayerEvent.VolumeChanged, updateVolumeGrid);
+            bitmovinPlayer.on(bitmovin.player.PlayerEvent.Muted, updateVolumeGrid);
+            bitmovinPlayer.on(bitmovin.player.PlayerEvent.Unmuted, updateVolumeGrid);
+            volumeGridListenSetup = true;
+        }
+    }
+
+    function handleWaterMark() {
+        uiManager.currentUi.getUI().config.components[7].disable();
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.ViewModeChanged, e => {
+            if (bitmovinPlayer.getViewMode() === 'fullscreen') {
+                $('.viu-player').addClass('vjs-fullscreen');
+            } else {
+                $('.viu-player').removeClass('vjs-fullscreen');
+            }
+        });
+    }
+
+    function handlePlaybacktimelabel() {
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.TimeChanged, function (data) {
+            $('.bmpui-ui-playbacktimelabel').css('min-width', '');
+        });
+    }
+
+    function handleAdBreak() {
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.AdBreakStarted, e => {
+            numOfAdPlayed++;
+
+            // Hide free banner
+            $("#v-premium-banner, #v-free-banner").hide();
+
+            handleAdActiveStatus();
+            $('.fp-play-now-watermark').addClass('hide');
+            $('.bmpui-ui-volumeslider').addClass('hide');
+            $('.bmpui-ui-captionsettingstogglebutton').addClass('hide');
+            $('.bmpui-ui-bottomsubtitlesettingstogglebutton').addClass('hide');
+            $('.bmpui-ui-qualitysettingstogglebutton').addClass('hide');
+            $('.bitmovinplayer-ima-container').append('<div id="ad_badge" class="ad-remark" tabindex="0" role="button" aria-disabled="false" title="廣告"><span aria-hidden="true" class="vjs-icon-placeholder"></span><span class="vjs-control-text" aria-live="polite">'+LANG_text['ad_remark_text']+'</span></div>');
+            $('.viu-player').addClass('ad-playing');
+            isAdPlaying = true;
+
+            if (numOfAdPlayed > 1) {
+                $('.viu-player').addClass('video-watching');
+            }
+        });
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.AdBreakFinished, e => {
+            $('.fp-play-now-watermark.hide').removeClass('hide');
+            $('.ad-remark').remove();
+            $('.bmpui-ui-volumeslider.hide').removeClass('hide');
+            handleSubtitleButton();
+            handleQualityButton();
+            if (currentEnableSubtitle["bottom"] &&
+                second_subtitles[currentEnableSubtitle["bottom"]] &&
+                second_subtitles[currentEnableSubtitle["bottom"]].captionJson.length > 0) {
+                $('.bmpui-ui-captionsettingstogglebutton.hide').removeClass('hide');
+            }
+            $('.viu-player').removeClass('ad-playing');
+            isAdPlaying = false;
+        });
+    }
+
+    function handlePanelPosition(elem) {
+        let btn = $(elem);
+        let panel = $(elem).find('.bmpui-ui-settings-panel');
+        panel.css({
+            'top': 0 - panel.height(),
+            'left': 0 - panel.width() + btn.width()
+        });
+    }
+
+    function showSettingPanel(event) {
+        let buttonElement = controlBarUiManager.config.components.find((item) => item.config.id === event.target.id);
+        buttonElement.config.settingsPanel.show();
+    }
+
+    function hideSettingPanel(event) {
+        let buttonElement = controlBarUiManager.config.components.find((item) => item.config.id === event.target.id);
+        buttonElement.config.settingsPanel.hide();
+    }
+
+    function handleVideoOptionPanelStyle() {
+        let optionPanel = '.bmpui-ui-settings-panel'
+        $(optionPanel).addClass('customize-video-option-panel');
+        $(`${optionPanel}>.bmpui-container-wrapper`).addClass('customize-video-option-panel-wrapper');
+        $(`${optionPanel} .bmpui-ui-settings-panel-page`).addClass('customize-video-option-panel-page');
+        $(`${optionPanel} .bmpui-ui-settings-panel-item`).addClass('customize-video-option-panel-item');
+        $(`${optionPanel} .bmpui-ui-settings-panel-item .bmpui-bmpui-ui-button`).addClass('customize-video-option-panel-button');
+    }
+
+    function handleVideoOptionPanel() {
+        handleVideoOptionPanelStyle();
+        controlBarUiManager.config.components.forEach((item) => {
+            if (item.config.settingsPanel) {
+                let button = document.getElementById(item.config.id);
+                let panel = document.getElementById(item.config.settingsPanel.config.id);
+                button.appendChild(panel);
+                button.addEventListener('mouseenter', (event) => {
+                    handlePanelPosition(event.target);
+                    showSettingPanel(event);
+                }, false);
+                button.addEventListener('mouseleave', (event) => {
+                    hideSettingPanel(event);
+                }, false);
+            }
+        })
+    }
+
+    function handleCaption() {
+        var captionDisplay = $('<div class="vjs-caption-display"></div>');
+        var captionOverlay = $('<div class="vjs-caption-overlay align-C" style="position: absolute; left: 10%; right: 10%; top: 0px; bottom: 0px; visibility: visible;">');
+        var captionOverlayText = $('<div id="2nd_subtitle" class="vjs-caption-overlay-text" style="width: 100%; text-align: center; white-space: pre-line; position: absolute; direction: ltr; writing-mode: horizontal-tb; background-color: rgba(0, 0, 0, 0);">');
+        captionDisplay.append(captionOverlay);
+        captionOverlay.append(captionOverlayText);
+        $('.bmpui-ui-uicontainer > .bmpui-container-wrapper').before(captionDisplay);
+
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.TimeChanged, data => {
+            if (currentEnableSubtitle["bottom"]) {
+                var currentTime = data.time * 1000;
+                var caption = second_subtitles[currentEnableSubtitle["bottom"]].captionJson;
+                caption = caption.find(entry => currentTime >= entry.startTime && currentTime <= entry.endTime);
+                if (!isAdPlaying && showCaption && caption) {
+                    var textDiv = $('<div style="color: #FFFFCC; background-color: rgb(0, 0, 0); position: relative; left: 0px; right: 0px; top: 0px; bottom: 0px; display: inline; writing-mode: horizontal-tb; unicode-bidi: plaintext; font-family: sans-serif; line-height: 1em;" class="caption-font-size-4">');
+                    $('.vjs-caption-overlay').removeClass('position-HT position-HB');
+                    $('.vjs-caption-overlay').addClass('position-'+caption.position);
+                    textDiv.html(caption.data);
+                    $('.vjs-caption-overlay-text').html(textDiv);
+                } else {
+                    $('.vjs-caption-overlay-text').html('');
+                }
+            } else {
+                $('.vjs-caption-overlay-text').html('');
+            }
+        });
+
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.Seek, data => {
+            $('.vjs-caption-overlay-text').html('');
+        });
+    }
+
+    function handleTotalTimeToggle() {
+        $('#viu-player .bmpui-controlbar-bottom .bmpui-remaining-time').click(e => {
+            $('#viu-player .bmpui-controlbar-bottom .bmpui-remaining-time').hide();
+            $('#viu-player .bmpui-controlbar-bottom .bmpui-total-time').show();
+        });
+        $('#viu-player .bmpui-controlbar-bottom .bmpui-total-time').click(e => {
+            $('#viu-player .bmpui-controlbar-bottom .bmpui-remaining-time').show();
+            $('#viu-player .bmpui-controlbar-bottom .bmpui-total-time').hide();
+        });
+    }
+
+    function handlePlayerUserActiveStatus() {
+        $('#viu-player').mousemove(e => {
+            clearTimeout(userInactiveTimeout);
+            $('#viu-player').removeClass('vjs-user-inactive');
+            $('#viu-player').addClass('vjs-user-active');
+            if ($(e.target).parents(".bmpui-ui-controlbar").length === 0) {
+                userInactiveTimeout = setTimeout(() => {
+                    $('#viu-player').removeClass('vjs-user-active');
+                    $('#viu-player').addClass('vjs-user-inactive');
+                }, 5000);
+            }
+        });
+        $('.bmpui-ui-controlbar').mouseout(() => {
+            clearTimeout(userInactiveTimeout);
+            userInactiveTimeout = setTimeout(() => {
+                $('#viu-player').removeClass('vjs-user-active');
+                $('#viu-player').addClass('vjs-user-inactive');
+            }, 5000);
+        });
+    }
+
+    function handleAdActiveStatus() {
+        $('.bitmovinplayer-ima-container').mousemove(() => {
+            clearTimeout(userInactiveTimeout);
+            $('#viu-player').removeClass('vjs-user-inactive');
+            $('#viu-player').addClass('vjs-user-active');
+            userInactiveTimeout = setTimeout(() => {
+                $('#viu-player').removeClass('vjs-user-active');
+                $('#viu-player').addClass('vjs-user-inactive');
+            }, 5000);
+        });
+    }
+
+    function handleBufferingOverlay() {
+        let bufferingOverlay = uiManager.currentUi.getUI().config.components.find((item) => item.config.cssClass === 'ui-buffering-overlay');
+        $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`)[0] &&
+            $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`)[0].remove();
+        $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`)[0] &&
+            $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`)[0].remove();
+        $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`).addClass('vjs-loading-spinner');
+        $(`#${bufferingOverlay.config.id} .bmpui-ui-buffering-overlay-indicator`).append('<span class="vjs-control-text">Video Player is loading.</span>');
+    }
+
+    function handleTopMuteButton() {
+        let topMuteButton = uiManager.currentUi.getUI().config.components.find((item) => item.config.cssClass === 'unmute-button unmute-button');
+        let topMuteButtonIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
+            + '<path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>'
+            + '<path d="M0 0h24v24H0z" fill="none"/>'
+            + '</svg>';
+        let delay = 3000;
+        $(`#${topMuteButton.config.id}`).append('<span class="vjs-icon-placeholder" aria-hidden="true" ></span>');
+        $(`#${topMuteButton.config.id} .vjs-icon-placeholder`).append(topMuteButtonIcon);
+        $(`#${topMuteButton.config.id}`).append(`<span class="vjs-control-text" aria-live="polite">${window.unmuteText || LANG_text['unmute_text']}</span>`);
+        bitmovinPlayer.on(bitmovin.player.PlayerEvent.Unmuted, (event)=>{
+            $(`#${topMuteButton.config.id}`).hide();
+        });
+        $(`#${topMuteButton.config.id}`).hide();
+        if (bitmovinPlayer.isMuted()) {
+            $(`#${topMuteButton.config.id}`).show().click(e => {
+                bitmovinPlayer.unmute();
+                $(`#${topMuteButton.config.id}`).hide();
+                $(`#mute_unmute`).removeClass("bmpui-muted");
+                $(`#mute_unmute`).addClass("bmpui-unmuted");
+            });
+            setTimeout(() => {
+                $(`#${topMuteButton.config.id}`).addClass("hide-text");
+            }, delay);
+        }
+    }
+
+    function handleSubtitleButton() {
+        if(!subtitleList || subtitleList.length === 0) {
+            $('.bmpui-ui-bottomsubtitlesettingstogglebutton').addClass('hide');
+        } else {
+            $('.bmpui-ui-bottomsubtitlesettingstogglebutton').removeClass('hide');
+        }
+    }
+
+    function handleQualityButton() {
+        if(sourceList && sourceList.length <= 1) {
+            $('.bmpui-ui-qualitysettingstogglebutton').addClass('hide');
+        } else {
+            $('.bmpui-ui-qualitysettingstogglebutton').removeClass('hide');
+        }
+    }
+
+    function CustomSubtitleDisplay(subtitlePosition, container) {
+        var subtitleArea;
+        var defaultCellResolution = {
+            rows: 15,
+            columns: 40
+        };
+        var defaultRegionName = 'bitdashDefault';
+        var defaultStyle = 'position: absolute; top:0;left:0;right:0;bottom:0; margin: 1.5%; pointer-events: none';
+        var noRegionBackgroundCSSClass = 'bitdash-subs-r-no-bg';
+
+        var availableRegions = {};
+
+        var updateFontSize = function () {
+            var fontSize = Math.round(container.clientHeight / defaultCellResolution.rows) + 'px';
+            regionDiv.style.fontSize = fontSize;
+            regionDiv.style.lineHeight = fontSize;
+        };
+
+        var addClass = function (element, cssClass) {
+            if (!element || !cssClass) {
+                return;
+            }
+
+            var cl = element.getAttribute('class');
+
+            var isNotPresent = true;
+            if (cl && cl.length > 0) {
+                var classes = cl.split(' ');
+                isNotPresent = classes.indexOf(cssClass) < 0;
+            }
+
+            if (cl && cl.length > 0 && isNotPresent) {
+                cssClass = cl + ' ' + cssClass;
+            }
+            if (isNotPresent) {
+                element.setAttribute('class', cssClass);
+            }
+        };
+
+        var removeClass = function (element, cssClass) {
+            if (!element || !cssClass) {
+                return;
+            }
+            var cl = element.getAttribute('class');
+            if (cl && cl.indexOf(cssClass) > -1) {
+                cl = cl.replace(new RegExp('(?:^|\\s)' + cssClass + '(?!\\S)'), '').trim();
+                element.setAttribute('class', cl);
+            }
+        };
+
+        var createHTMLElement = function (type, attributes, content) {
+            var el = document.createElement(type);
+            var prop;
+
+            if (attributes) {
+                for (prop in attributes) {
+                    if (attributes.hasOwnProperty(prop)) {
+                        el.setAttribute(prop, attributes[prop]);
+                    }
+                }
+            }
+
+            if (content) {
+                el.innerHTML = content;
+            }
+
+            return el;
+        };
+
+        var getRegion = function (name, style) {
+            name = name || defaultRegionName;
+
+            if (availableRegions.hasOwnProperty(name)) {
+                return availableRegions[name];
+            }
+
+            var cellResolution = defaultCellResolution;
+
+            var tmp = style.match(/cellResolutionRows:([\d]+);/);
+            if (tmp && tmp.length >= 2) {
+                tmp = parseInt(tmp[1]);
+                if (!isNaN(tmp)) {
+                    cellResolution.rows = tmp;
+                }
+            }
+            tmp = style.match(/cellResolutionColumns:([\d]+);/);
+            if (tmp && tmp.length >= 2) {
+                tmp = parseInt(tmp[1]);
+                if (!isNaN(tmp)) {
+                    cellResolution.columns = tmp;
+                }
+            }
+
+            var alwaysShowBackground = false;
+
+            if (style.indexOf('showBackground:always') > -1) {
+                alwaysShowBackground = true;
+            }
+
+            var regionDiv = document.createElement('div');
+            regionDiv.style.cssText = style;
+
+            updateFontSize = function () {
+                var fontSize = Math.round(container.clientHeight / cellResolution.rows) + 'px';
+                regionDiv.style.fontSize = fontSize;
+                regionDiv.style.lineHeight = fontSize;
+            };
+
+            updateFontSize();
+
+            if (!alwaysShowBackground) {
+                addClass(regionDiv, noRegionBackgroundCSSClass);
+            }
+
+            var elem = document.createElement('div');
+            elem.className = 'vjs-text-track-cue';
+            elem.setAttribute('style', 'direction: ltr; writing-mode: horizontal-tb; unicode-bidi: plaintext; text-align: center; font: 16.59px sans-serif; white-space: pre-line; position: absolute; width: 100%; inset: 292.5px 0px 11.25px; background-color: rgba(0, 0, 0, 0); pointer-events: none');
+            if (subtitlePosition == "bottom") {
+                elem.id = '1st_subtitle';
+                elem.style.bottom = '0';
+            } else {
+                elem.style.top = '0';
+            }
+
+            regionDiv.appendChild(elem);
+
+            availableRegions[name] = {
+                element: elem,
+                region: regionDiv,
+                bgAlwaysOn: alwaysShowBackground
+            };
+            subtitleArea.appendChild(regionDiv);
+
+            return availableRegions[name];
+        };
+
+        var preventDuplicateSubtitle=true;
+        var show = function (event) {
+            // top subtitle area
+            // console.log(subtitlePosition + ' subtitle show:',currentEnableSubtitle[subtitlePosition] ,event,player.subtitles.list())
+            if(!event){
+                return;
+            }
+            if(currentEnableSubtitle[subtitlePosition] == event.subtitleId){ // only show top subtitle on top
+                if(preventDuplicateSubtitle || event.type === "subtitleenabled"){
+                    preventDuplicateSubtitle = false;
+                    var region = getRegion(event.regionName, event.regionStyle);
+
+                    var elem = document.createElement('div');
+                    elem.setAttribute('style', 'color: rgb(255, 255, 255); background-color: rgb(0, 0, 0); position: relative; inset: 0px; display: inline; writing-mode: horizontal-tb; unicode-bidi: plaintext; font-family: sans-serif;pointer-events:none');
+                    elem.innerHTML = event.text.replace(/\n/g, '<br/>');
+
+                    removeClass(region.region, noRegionBackgroundCSSClass);
+
+                    region.element.appendChild(elem);
+                    var timer = setTimeout(function(){ preventDuplicateSubtitle=true; clearTimeout(timer); }, 200);
+                }
+
+            }
+
+        };
+
+        var hide = function (event) {
+            event.regionName = event.regionName || defaultRegionName;
+
+            var elem = document.createElement('li');
+            elem.innerHTML = event.text.replace(/\n/g, '<br/>');
+
+            if (!availableRegions.hasOwnProperty(event.regionName)) {
+                return;
+            }
+
+            var regionList = availableRegions[event.regionName];
+
+            var children = regionList.element.childNodes;
+            var len = children.length;
+            var found = false;
+            var child;
+
+            for (var i = 0; i < len; i++) {
+                child = children[i];
+
+                if (child && child.innerHTML === elem.innerHTML) {
+                    regionList.element.removeChild(child);
+                    found = true;
+                }
+            }
+
+            if (!regionList.bgAlwaysOn && regionList.element.childNodes.length < 1) {
+                addClass(regionList.region, noRegionBackgroundCSSClass);
+            }
+        };
+
+        var addDefaultRegion = function () {
+            getRegion(defaultRegionName, defaultStyle);
+        };
+
+        var clear = function () {
+            if (subtitleArea) {
+                subtitleArea.innerHTML = '';
+                availableRegions = {};
+                addDefaultRegion();
+            }
+        };
+
+        var destroy = function () {
+            if (subtitleArea && subtitleArea.parentNode) {
+                subtitleArea.parentNode.removeChild(subtitleArea);
+                subtitleArea = null;
+            }
+        };
+
+        var init = function () {
+            subtitleArea = createHTMLElement('div');
+
+            subtitleArea.setAttribute('class', 'vjs-text-track-display subtitles-' + subtitlePosition);
+            subtitleArea.style.position = 'absolute';
+            subtitleArea.style.top = '0';
+            subtitleArea.style.width = '100%';
+            subtitleArea.style.height = '100%';
+            subtitleArea.style.margin = '0';
+            subtitleArea.style.padding = '0';
+            subtitleArea.style.pointerEvents = 'none';
+
+            addDefaultRegion();
+
+            var renderingElement = $('>.bmpui-container-wrapper', container)[0];
+            if (renderingElement) {
+                container.insertBefore(subtitleArea, renderingElement);
+            } else {
+                container.appendChild(subtitleArea);
+            }
+        };
+        init();
+
+        return {
+            showCue: show,
+            hideCue: hide,
+            clear: clear,
+            destroy: destroy,
+            updateFontSize: updateFontSize
+        }
+    }
+
+    function addClassName() {
+        var player = $("#viu-player");
+        player.addClass("viu-player");
+        // HACK
+        player.css("min-height","0");
+
+        // This allow showing loading spinner before video loaded.
+        player.addClass("vjs-waiting");
+
+        // hide soundbar on mobile, as mobile is not able to drag on soundbar
+        if (videojs.browser.IS_IOS || videojs.browser.IS_ANDROID) {
+            player.addClass("vp-is-mobile");
+        }
+
+        // use for handle subtitles position
+        // but seems cloud be remove
+        if (videojs.browser.IS_IOS) {
+            player.addClass("vp-is-ios");
+            if (videojs.browser.IOS_VERSION >= 11) {
+                player.addClass("vp-ios-11");
+            }
+        }
+
+        // Since latest iOS safari do not support `:hover` css,
+        // Remove `vjs-workinghover` for other touchable device in order to sync their beahvihour
+        videojs.browser.TOUCH_ENABLED && player.removeClass("vjs-workinghover");
+    }
+
+    function switchQuality(quality) {
+        firstSubtitle = null;
+        var source = sourceList.find(source => source.resolution == quality);
+        if (!source || (typeof anonUser !== 'undefined' && anonUser.permit.resolution['p' + quality] === '0') || 
+            (typeof user !== 'undefined' && user.permit.resolution['p' + quality] === '0')) {
+            playerHandler().trigger("Show_Upgrade_Entry");
+            return false;
+        }
+        var qualityIndex;
+        for (const [key, value] of Object.entries(resolutions)) {
+            if(value == quality) {
+                qualityIndex = key;
+            }
+        }
+        playerHandler().trigger("resolutionchange", {
+            index: qualityIndex,
+            resolution: quality,
+        });
+        source = {
+            hls: source.sources[0].src,
+        };
+        if (globalPrebidedAdObject.length > 0) {
+            globalPrebidedAdObject.forEach(ad => {
+                if (+ad.position >= player.getCurrentTime()) {
+                    bitmovinPlayer.ads.schedule(ad);
+                }
+            });
+        }
+        playerLoadSource(source, timestamp);
+        currentQuality = quality;
+        return true;
+    }
+
+    function playerLoadSource(source, seek) {
+        bitmovinPlayer.load(source).then(() => {
+            subtitleList.forEach(subtitleConfig => {
+                bitmovinPlayer.subtitles.add(subtitleConfig);
+            });
+            // if (seekbarMarkers.length > 0) {
+            //     seekbarMarkers.forEach(item => uiManager.addTimelineMarker(item));
+            // }
+
+            if (seek) {
+                bitmovinPlayer.seek(timestamp);
+            }
+        });
+    }
+
+    function pageVisibilityHandler() {
+        // Reference: https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
+        // Monitor page visibility make sure video will be paused when screen locked
+
+        var hidden, visibilityChange;
+        if (typeof document.hidden !== "undefined") {
+            // Opera 12.10 and Firefox 18 and later support
+            hidden = "hidden";
+            visibilityChange = "visibilitychange";
+        } else if (typeof document.msHidden !== "undefined") {
+            hidden = "msHidden";
+            visibilityChange = "msvisibilitychange";
+        } else if (typeof document.webkitHidden !== "undefined") {
+            hidden = "webkitHidden";
+            visibilityChange = "webkitvisibilitychange";
+        }
+
+        if (typeof document.addEventListener === "undefined" || hidden === undefined) {
+            log("Page Visibility API is not supported");
+        } else {
+            document.addEventListener(
+                visibilityChange,
+                function handleVisibilityChange() {
+                    var mobile = videojs.browser.IS_IOS || videojs.browser.IS_ANDROID;
+                    if (document[hidden]) {
+                        if (mobile) {
+                            bitmovinPlayer.pause();
+                        }
+                    } else {}
+                },
+                false
+            );
+        }
+    }
+
+    function hotKeyHandler(options) {
+        document.body.onkeydown = function(e) {
+            // skip if user is focusing on an input field
+            if (/input/i.test(e.target.nodeName)) {
+                return;
+            }
+
+            // TODO
+            // skip if user seeking, ad is play or video is ended
+            // if (player.ended() || player.seeking() || isAdPlaying(player) || player.hasClass("blocked")) {
+            //     if (e.which == 32 || e.which == 37 || e.which == 39) {
+            //         e.preventDefault();
+            //     }
+            //     return;
+            // }
+
+            var seekStep = typeof options.seekStep !== "undefined" ? options.seekStep : 5;
+            var seekTime;
+
+            switch (e.which) {
+                case 32:
+                    e.preventDefault();
+                    $(document.activeElement).blur();
+                    if ($('#play_pause').is(':visible')) {
+                        if ($('#play_pause').hasClass('bmpui-off')) {
+                            bitmovinPlayer.play();
+                        } else {
+                            bitmovinPlayer.pause();
+                        }
+                    }
+                    break;
+                case 37:
+                    e.preventDefault();
+                    seekTime = Math.max(0, bitmovinPlayer.getCurrentTime() - seekStep);
+
+                    var $svg = $(".fp-seek-backward-container");
+                    $svg.addClass("animate");
+                    setTimeout(function () {
+                        $svg.removeClass("animate")
+                    }, 300)
+                    break;
+                case 39:
+                    e.preventDefault();
+                    seekTime = Math.min(bitmovinPlayer.getDuration(), bitmovinPlayer.getCurrentTime() + seekStep);
+
+                    var $svg = $(".fp-seek-forward-container");
+                    $svg.addClass("animate");
+                    setTimeout(function () {
+                        $svg.removeClass("animate")
+                    }, 300)
+                    break;
+            }
+
+            if (seekTime) {
+                bitmovinPlayer.seek(seekTime);
+            }
+        };
+    }
+
+    function handleButtonSelectStyle(button) {
+        $(`#${button.config.id}`).parent().parent().parent().find('.vjs-selected').removeClass('vjs-selected');
+        $(`#${button.config.id}`).addClass('vjs-selected');
+    }
+
+    function changeBottomSubtitleTo(passSubtitleId) {
+        if (passSubtitleId !== currentEnableSubtitle["bottom"]) {
+            player.subtitles.disable(currentEnableSubtitle["bottom"]);
+            player.subtitles.enable(passSubtitleId, false);
+            currentEnableSubtitle["bottom"] = passSubtitleId;
+            if (second_subtitles[passSubtitleId].captionJson.length > 0) {
+                $('.bmpui-ui-captionsettingstogglebutton').removeClass('hide');
+            } else {
+                $('.bmpui-ui-captionsettingstogglebutton').addClass('hide');
+            }
+        }
+    }
+
+    function disaleBottomSubtitle(){
+        player.subtitles.disable(currentEnableSubtitle["bottom"]);
+        // Disable caption option on control bar
+        currentEnableSubtitle["bottom"] = '';
+        $('.bmpui-ui-captionsettingstogglebutton').addClass('hide');
+        // disable caption
+        $('.vjs-caption-overlay-text').html('');
+    }
+
+    // function changeTopSubtitleTo(passSubtitleId) {
+    //     player.subtitles.disable(currentEnableSubtitle["top"]);
+    //     player.subtitles.enable(passSubtitleId, false);
+    //     currentEnableSubtitle["top"] = passSubtitleId;
+    // }
+
+    // function disaleTopSubtitle(){
+    //     player.subtitles.disable(currentEnableSubtitle["top"]);
+    //     currentEnableSubtitle["top"] = '';
+    // }
+
+    function hideSubtitles(player) {
+        // mainly used for iPhone when playing AD in fullscreen,
+        // hide subbtiels before AD start avoid subtitles keep showing on video AD
+
+        var tracks = player.textTracks();
+        var activeCues = {};
+        var currentTrack;
+
+        var changePosition = function(cue) {
+            if (!cue || activeCues[cue.id]) {
+                return false;
+            }
+
+            log("Active Cue", cue.text, cue.snapToLines, cue);
+
+            var originPosition = cue.position;
+            var result = {
+                cue: cue,
+                restore: function() {
+                    log("Subtitles Restored - " + cue.text);
+                    cue.position = originPosition;
+                }
+            };
+
+            activeCues[cue.id] = result;
+
+            cue.position = 100;
+        };
+
+        var checking = function(track) {
+            if (track.kind === "subtitles" && track.mode === "showing" && track.activeCues && track.activeCues.length) {
+                // Since set the mode of current track to `disabled` is not work on iOS 11 (or above?)
+                // So that we change the position of active cues in order to "hide" the subtitle
+                changePosition(track.activeCues[0]);
+
+                // It is strange that the value of `track.activeCues[0]` may be changed after upper `changePosition`
+                // and thus we call `changePostion` again
+                changePosition(track.activeCues[0]);
+
+                // track mode should also be disabled after active cue postion changed
+                currentTrack = track;
+                currentTrack.mode = "disabled";
+
+                log("Current Track", currentTrack);
+            }
+        };
+
+        for (var i = 0; i < tracks.length; i++) {
+            checking(tracks[i]);
+        }
+
+        return function() {
+            // retore
+
+            if (currentTrack) {
+                currentTrack.mode = "showing";
+            }
+
+            for (var id in activeCues) {
+                activeCues[id].restore();
+            }
+        };
+    }
+
+    function handlePlayerWarning() {
+        // bitmovinPlayer.on(bitmovin.player.PlayerEvent.Warning, code => {
+        //     if (code.name == "PLAYBACK_COULD_NOT_BE_STARTED") {
+        //         shouldMuteOnAutoPlay = true;
+        //         bitmovinPlayer.mute();
+        //         bitmovinPlayer.play();
+        //     }
+        // });
+    }
+    
+    function parseQueryString(url) {
+        var match,
+            pl = /\+/g, // Regex for replacing addition symbol with a space
+            search = /([^&=]+)=?([^&]*)/g,
+            decodeurl = function(s) {
+                return decodeURIComponent(s.replace(pl, " "));
+            }
+        var urlParams = {};
+        while (match = search.exec(url))
+            urlParams[decodeurl(match[1])] = decodeurl(match[2]);
+        return urlParams;
+    }
+
+    function updateQueryStringParameter(uri, key, value) {
+        var re = new RegExp("([?&])" + key + "=.*?(&|$)", "i");
+        var separator = uri.indexOf('?') !== -1 ? "&" : "?";
+        if (uri.match(re)) {
+          return uri.replace(re, '$1' + key + "=" + value + '$2');
+        }
+        else {
+          return uri + separator + key + "=" + value;
+        }
+    }
+
+    function getUserDefaultQuality(options) {
+        var quality;
+        if(typeof user !== 'undefined'){
+            quality = user.privileges.contentQuality.toLowerCase().replace(/_/g, "");
+        } else if (typeof anonUser !== 'undefined') {
+            quality = anonUser.privileges.contentQuality.toLowerCase().replace(/_/g, "");
+        } else {
+            quality = sourceList[options.startIndex] && sourceList[options.startIndex].id;
+        }
+        return quality;
+    }
+
+    function handlePrebidAdUnit(ads) {
+        for (var adIdx = 0; adIdx < ads.length; adIdx++) {
+            var urlParams = parseQueryString(ads[adIdx]["tag"].url);
+            if ("iu" in urlParams) {
+                var prebidPlacementId;
+                if (global_area_id == '1') { // hk
+                    if (ads[adIdx].position == 0) {
+                        prebidPlacementId = 19864514; // preroll
+                    } else {
+                        prebidPlacementId = 19864515; // midroll
+                    }
+                } else if (global_area_id == '2') { // sg
+                    if (ads[adIdx].position == 0) {
+                        prebidPlacementId = 19864541; // preroll
+                    } else {
+                        prebidPlacementId = 19864542; // midroll
+                    }
+                } else if (global_area_id == '4') { // th
+                    if (ads[adIdx].position == 0) {
+                        prebidPlacementId = 20165445; // preroll
+                    } else {
+                        prebidPlacementId = 20165446; // midroll
+                    }
+                } else if (global_area_id == '5') { // ph
+                    if (ads[adIdx].position == 0) {
+                        prebidPlacementId = 19864539; // preroll
+                    } else {
+                        prebidPlacementId = 19864540; // midroll
+                    }
+                }
+
+                var cust_params = null;
+                if ("cust_params" in urlParams) {
+                    cust_params = parseQueryString(urlParams["cust_params"]);
+                }
+
+                var currentPrebidAdUnit = {
+                    code: urlParams["iu"],
+                    custParams: cust_params,
+                    mediaTypes: {
+                        video: {
+                            playerSize: [1280, 720],
+                            context: 'instream'
+                        }
+                    },
+                    bids: [{
+                        bidder: 'appnexus',
+                        params: {
+                            placementId: prebidPlacementId,
+                            keywords: {
+                                ott_cate: cust_params && cust_params["ott_cate"] ? cust_params["ott_cate"] : null
+                            },
+                            video: {
+                                skippable: true,
+                                playback_method: ['auto_play_sound_off']
+                            }
+                        }
+                    }]
+                };
+                prebidAdUnitsDict[urlParams["iu"]] = currentPrebidAdUnit;
+                prebidAdUnitsArray.push(currentPrebidAdUnit);
+            }
+        }
+    }
+
+    function handlePreBid(ads) {
+        if (!ads || ads.length === 0) {
+            return Promise.resolve();
+        }
+
+        prebidAdUnitsArray = [];
+        prebidAdUnitsDict = {};
+
+        handlePrebidAdUnit(ads);
+
+        if ((typeof pbjs !== 'undefined') && (prebidAdUnitsArray.length > 0)) {
+            var maxBid = 20;
+            if (global_area_id == '1') {
+                maxBid = 30;
+            }
+            var customPriceGranularity = {
+                "buckets": [{
+                        "precision": 2, //default is 2 if omitted - means 2.1234 rounded to 2 decimal places = 2.12
+                        "max": 5,
+                        "increment": 0.50 // from $0 to $5, 50-cent increments
+                    },
+                    {
+                        "max": maxBid,
+                        "increment": 1.0 // from $5 to $20, $1.00 increments
+                    }
+                ]
+            };
+            
+            const FAILSAFE_TIMEOUT = 3000;
+
+            pbjs.que.push(function() {
+                pbjs.setConfig({
+                    debug: true,
+                    priceGranularity: customPriceGranularity,
+                    cache: {
+                        url: 'https://prebid.adnxs.com/pbc/v1/cache'
+                    }
+                });
+            });
+
+            const pbjsLoaded = new Promise((resolve, reject) => {
+                pbjs.que.push(resolve);
+                setTimeout(reject, FAILSAFE_TIMEOUT);
+            });
+
+            const performAsyncBidding = () => {
+                pbjs.removeAdUnit();
+                pbjs.addAdUnits(prebidAdUnitsArray);
+                // const getPrebidAdTags = new Promise(resolve => pbjs.requestBids({ bidsBackHandler: resolve }));
+                const prebidedAdTags = (bids) => {
+                    let prebidAdTags = [];
+                    for (var adCode in bids) {
+                        prebidAdTags[adCode] = pbjs.adServers.dfp.buildVideoUrl({
+                            adUnit: prebidAdUnitsDict[adCode],
+                            params: {
+                                iu: adCode,
+                                cust_params: prebidAdUnitsDict[adCode]["custParams"],
+                                output: 'vast'
+                            }
+                        });
+                        if ("bids" in bids[adCode] && bids[adCode].bids.length > 0) {
+                            pbjs.markWinningBidAsUsed({
+                                adUnitCode: adCode,
+                                adId: bids[adCode].bids[0].adId,
+                            });
+                        }
+                    }
+                    return prebidAdTags
+                }
+                return new Promise(resolve => pbjs.requestBids({ bidsBackHandler: resolve }))
+                            .then(prebidTag => prebidedAdTags(prebidTag));
+            }
+
+            const pushPreBidtoAd = (tag) => {
+                let prebidedAd = [];
+                ads.forEach(item => {
+                    for (let [key, value] of Object.entries(tag)) {
+                        var originalAdUrl = parseQueryString(item.tag.url);
+                        if (key === originalAdUrl["iu"]) {
+                            let tempAd = item;
+                            if ('nofb' in originalAdUrl) {
+                                value = updateQueryStringParameter(value, 'nofb', originalAdUrl.nofb);
+                            }
+                            tempAd.tag.url = value;
+                            prebidedAd.push(tempAd);
+                        }
+                    }
+                });
+                if (prebidedAd.length !== ads.length) {
+                    let unBidAd = [];
+                    ads.forEach(adTag => {
+                        if (!prebidedAd.filter(bid => bid.id === adTag.id).length > 0) {
+                            unBidAd.push(adTag);
+                        }
+                    });
+                    prebidAdTags.concat(unBidAd);
+                }
+                prebidedAd.sort((a, b) => {
+                    if(a.id < b.id) { return -1; }
+                    if(a.id > b.id) { return 1; }
+                    return 0;
+                });
+                globalPrebidedAdObject = prebidedAd;
+                return prebidedAd;
+            }
+            
+            // let adTag;
+            return pbjsLoaded.then(() => performAsyncBidding())
+                .then(tag => pushPreBidtoAd(tag))
+                .catch(() => {
+                    globalPrebidedAdObject = ads;
+                    return ads;
+                });
+        }
+        return Promise.resolve(ads);
+    }
+
+    window.viuplayer = viuplayer;
+    window.updateviuplayer = updateviuplayer;
+
+}());

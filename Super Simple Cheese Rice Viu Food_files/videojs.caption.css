@@ -1,0 +1,114 @@
+.vjs-control-bar {
+  z-index: 11;
+}
+.position-VR {
+  -webkit-writing-mode: vertical-rl;
+  -moz-writing-mode: vertical-rl;
+  -ms-writing-mode: vertical-rl;
+  -o-writing-mode: vertical-rl;
+  writing-mode: vertical-rl;
+  right: 7%;
+  width: auto;
+  height: 100%;
+  top: 0;
+}
+.position-VL {
+  -webkit-writing-mode: vertical-rl;
+  -moz-writing-mode: vertical-rl;
+  -ms-writing-mode: vertical-rl;
+  -o-writing-mode: vertical-rl;
+  writing-mode: vertical-rl;
+  left: 7%;
+  width: auto;
+  height: 100%;
+  top: 0;
+}
+.group-tags {
+  writing-mode: horizontal-tb;
+  -webkit-writing-mode: horizontal-tb;
+}
+.align-C {
+  text-align: center;
+}
+.align-L {
+  text-align: left;
+}
+
+.viu-player .vjs-caption-display {
+    overflow: hidden;
+}
+
+.viu-player .vjs-caption-display div {
+    color: #fff;
+    background-color: transparent !important;
+    text-shadow: -2px -2px 0px #000, -1px -2px 0px #000, 0px -2px 0px #000, 1px -2px 0px #000, 2px -2px 0px #000, 2px -1px 0px #000, 2px 0px 0px #000, 2px 1px 0px #000, 2px 2px 0px #000, 1px 2px 0px #000, 0px 2px 0px #000, -1px 2px 0px #000, -2px 2px 0px #000, -2px 1px 0px #000, -2px 0px 0px #000, -2px -1px 0px #000, 2px 2px 5px #000;
+    font-family: inherit !important;
+}
+
+/* Control bar is hidden */
+.vjs-user-inactive.vjs-playing .vjs-caption-overlay {
+    margin: 0 !important;
+}
+
+.vjs-user-inactive.vjs-playing .vjs-caption-display .position-HB>div {
+    bottom: 23.3% !important;
+}
+
+.vjs-user-inactive.vjs-playing .vjs-caption-display .position-HT>div {
+    top: 15% !important;
+}
+
+
+/* Control bar is shown */
+.vjs-caption-display .position-HB>div {
+    top: auto !important;
+    bottom: 120px !important;
+}
+
+.vjs-caption-display .position-HT>div {
+    top: 15% !important;
+    bottom: auto !important;
+}
+
+.viu-player .vjs-caption-display div {
+    font-size: 3.5vw;
+}
+
+@media (max-width: 480px) {
+    /* Control bar is shown */
+    .vjs-caption-display .position-HB>div {
+        bottom: 75px !important;
+    }
+}
+
+@media (min-width: 641px) {
+    .viu-player .vjs-caption-display div {
+        font-size: 20px;
+    }
+    .viu-player.vjs-fullscreen .vjs-caption-display div {
+        font-size: 2.5vw;
+    }
+}
+
+@media (max-aspect-ratio: 16 / 9) {
+    .viu-player.vjs-fullscreen .vjs-caption-display>div {
+        height: 0 !important;
+        padding-top: 56.25%;
+        margin: auto !important;
+    }
+    .viu-player.vjs-fullscreen .vjs-caption-display .position-HB>div {
+        bottom: 23.3% !important;
+    }
+    .viu-player.vjs-fullscreen .vjs-caption-display .position-HT>div {
+        top: 15% !important;
+    }
+}
+
+@media (min-aspect-ratio: 16 / 9) {
+    .viu-player.vjs-fullscreen .vjs-caption-display .position-HB>div {
+        bottom: 30% !important;
+    }
+    .vjs-user-inactive.vjs-playing .vjs-caption-display .position-HB>div {
+        bottom: 23.3% !important;
+    }
+}
