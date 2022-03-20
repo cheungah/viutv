@@ -1,0 +1,85 @@
+// parental lock
+var seconds = 7200; // set default
+var sync_play_interval = 60;
+$.get( region.universal_api_endpoint+"mobile?r=/setting/query2&platform_flag_label=web&area_id="+global_area_id+"&language_flag_id="+global_lang_id+"&build_version=1&os=ios&build_version=1", function( response ) {
+	if(response.data && response.data.setting && response.data.setting.has_parental_lock_function && response.data.setting.has_parental_lock_function == "1"){
+		Cookies.set("ParentalLockSetting", "true");
+	}else{
+		Cookies.set("ParentalLockSetting", "false");
+	}
+
+	if(response.data && response.data.setting && response.data.setting.parental_lock_invalid_time){
+		seconds = response.data.setting.parental_lock_invalid_time;
+	}
+	if (response.data && response.data.setting && response.data.setting.video && response.data.setting.video.sync_play_interval) {
+		sync_play_interval = response.data.setting.video.sync_play_interval;
+	}
+
+	var current_path = window.location.pathname;
+	if(/member/.test(current_path) && !md.mobile()){
+		updateRestrictStatus();
+	}
+}, "json" );
+
+function ParentalLock() {
+	this.pin;
+
+	this.init = function() {
+		// initial
+		this.getPin();
+	};
+
+	this.getPin = function(){
+		this.pin = Cookies.get("ParentalLockPin") || "";
+	}
+	this.setPin = function(pin){
+		Cookies.set("ParentalLockPin", pin);
+		this.refreshExpires();
+	};
+	this.removePin = function(pin){
+		if(this.checkPin(pin)){
+			Cookies.remove("ParentalLockPin");
+			Cookies.remove("ParentalLockExpires");
+
+			return true;
+		}
+
+		return false;
+	};
+	this.refreshExpires = function(){
+		var expires = new Date(new Date().getTime() + seconds * 1000);
+		Cookies.set("ParentalLockExpires", "expires", {
+			expires: expires
+		});
+	};
+	this.checkPinExists = function(){
+		if(this.pin != ""){
+			return true;
+		}
+
+		return false;
+	}
+	this.checkPin = function(pin){
+		if(this.pin == pin){
+			return true;
+		}
+
+		return false;
+	}
+	this.verifyPin = function(pin){
+		if(this.checkPin(pin) && this.checkExpires()){
+			return true;
+		}
+
+		return false;
+	}
+	this.checkExpires = function(){
+		if(Cookies.get("ParentalLockExpires")){
+			return true;
+		}
+
+		return false;
+	}
+
+	this.init();
+}
